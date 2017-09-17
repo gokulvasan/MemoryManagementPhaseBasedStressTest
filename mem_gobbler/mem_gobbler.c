@@ -173,6 +173,7 @@ static int add_new_alloc(lt_t *address, long len, mem_type_t type)
 	return 0;
 }
 
+#if 0
 /* XXX: I dont want to use this :D*/
 static int del_alloc(long  phase, lt_t *address)
 {
@@ -205,6 +206,7 @@ static int del_alloc(long  phase, lt_t *address)
 
 	return -1;
 }
+#endif 
 
 /* randomizer */
 /* 
@@ -294,7 +296,7 @@ static void random_touch_n(lt_t *addr, lt_t len)
 		lt_t start = which_slice? switcher : 0;
 		lt_t end = which_slice? len : switcher;	
 		random_touch(addr, start, end, len);
-		which_slice != which_slice;
+		which_slice = !which_slice;
 		n--;
 	}
 }
@@ -425,7 +427,7 @@ static int loop_once(void)
 	return j;
 }
 
-static int loop_n(int n)
+static void loop_n(int n)
 {
 	while(n) {
 		lt_t cnt = alloc_track[curr].list_count;
@@ -519,25 +521,25 @@ static int job(double exec_time, double program_end, double length)
 
 int main(int argc, char** argv)
 {
-	lt_t wcet;
-	lt_t period;
+	//lt_t wcet;
+	//lt_t period;
 	double wcet_ms, period_ms;
 	double duration = 0, start = 0;
 	double scale = 1.0;
 	int cur_job = 0, num_jobs = 0;
 ///XXX: Command line args are needed, temporary removal is made...
 	int verbose = 1;
-	unsigned int job_no;
+	//unsigned int job_no;
 
-	int protocol = -1;
+	//int protocol = -1;
 	double cs_length = 1; /* millisecond */
 
 	progname = argv[0];
 	wcet_ms   = 50; //atof(argv[optind + 0]);
 	period_ms = 55; //atof(argv[optind + 1]);
 
-	wcet   = ms2ns(wcet_ms);
-	period = ms2ns(period_ms);
+	//wcet   = ms2ns(wcet_ms);
+	//period = ms2ns(period_ms);
 
 	duration  = 1000; //atof(argv[optind + 2]);
 	duration += period_ms * 0.001 * (num_jobs - 1);
