@@ -278,7 +278,7 @@ static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
 			continue;
 		// TODO: getrusage
 		if(addr[i] != 0xf) {
-			printf("touchi\n"); 
+			//printf("touchi\n"); 
 			addr[i] = 0xf;
 			break;
 		}
@@ -291,7 +291,7 @@ static void random_touch_n(lt_t *addr, lt_t len)
 	lt_t which_slice = 0;
 	lt_t switcher = len/2;
 	lt_t n = len/1024;
-	printf("len: %ld random: %ld\n",len, n);
+	//printf("len: %ld random: %ld\n",len, n);
 	while(n) {
 		lt_t start = which_slice? switcher : 0;
 		lt_t end = which_slice? len : switcher;	
