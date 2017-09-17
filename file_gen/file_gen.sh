@@ -1,9 +1,15 @@
 #!/bin/bash
 
+# Generate files and corresponding structure.
+# corresponding structure needs to be redirected to files.h
+
 multiplier=2
 scale=1048576
+persizecount=50
 
-
+disksize=0
+diskpath="./test.img"
+mountpath="./G"
 
 declare -a list_type=()
 j=1
@@ -13,6 +19,31 @@ do
        list_type+=(Item$Item)
 done
 
+echo "/* Auto Generating test files\n"
+for Item in ${list_type[*]}
+do 
+   size=$((4 * $j))
+   disksize=$(($disksize + $(($size * $persizecount)) ))
+   j=$(($j * $multiplier))
+done
+
+disksize= $(( $disksize / 1024 )) 2>/dev/null
+#echo $disksize 
+if [ ! -e $mountpath ]
+then
+     mkdir $mountpath
+     chmod 777 $mountpath
+fi
+
+dd if="/dev/zero" bs=1M count=$disksize of=$diskpath 2>/dev/null 3>/dev/null
+chmod 777 $diskpath
+mkfs.ext3 $diskpath 2>/dev/null 3>/dev/null
+
+mount -v $diskpath $mountpath >/dev/null 
+
+echo "*/"
+
+j=1
 echo "typedef enum file_len {"
 for item in ${list_type[*]}
 do
@@ -26,9 +57,11 @@ do
    echo "static file_path file_$type[] = { "
    size=$((4 * $j))
    size=$size'M'
-   for i in $(seq 1 1 50) 
+   for i in $(seq 1 1 $persizecount) 
    do
-       dd if=/dev/zero ibs=$size count=1 of=$size"_"$i.txt 2>/dev/null
+       dd if=/dev/zero ibs=$size count=1 of=$mountpath"/"$size"_"$i.txt 2>/dev/null
+       # use chown here but not needed now
+       chmod 777 $mountpath"/"$size"_"$i.txt
        echo -e "\t {0, PATH($size"_"$i.txt)},"
    done
    echo -e "\t {0, NULL},"
@@ -45,3 +78,6 @@ do
    j=$(($j * $multiplier))
 done
 echo "};"
+
+umount $mountpath
+rm -rf $mountpath

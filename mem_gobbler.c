@@ -38,11 +38,12 @@ typedef unsigned long lt_t;
 #define NUMS 4096
 #define MAX_ALLOC (4096)
 #define ms2ns(ms) ((ms)*1000000LL) 
-#if 0
-#define FS "/dev/sdb/"
-#else
-#define FS "/home/gokul/T/test/test_suite/files/"
-#endif
+
+/*
+ * Concatenator 
+ */
+#define FS "/mnt/test_images/"
+#define PATH(name) FS # name
 
 /* This defines maximum allocation in an transition
  *
@@ -53,7 +54,6 @@ typedef unsigned long lt_t;
 static int num[NUMS];
 static char* progname;
 
-#define PATH(name) FS # name
 /*
  * Basically tries to maintain
  * array of list of paths and its
