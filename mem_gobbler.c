@@ -55,6 +55,13 @@ static int num[NUMS];
 static char* progname;
 
 /*
+ * Statistics: 
+ *	counting Anon and Filemapped pages
+ */
+static lt_t anon_cnt = 0;
+static lt_t file_cnt = 0;
+static lt_t phase_cnt = 0;
+/*
  * Basically tries to maintain
  * array of list of paths and its
  * access.
@@ -306,17 +313,23 @@ static void random_touch_n(lt_t *addr, lt_t len)
  * of allocation. 
  *
  */
+#define KB 1024
+#define PAGE 4096
+#define BYTE_TO_PAGE(B) ( (((B) / (KB)) / (PAGE)))
+
 lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 {
 	int fd;
 	lt_t *map;
+	lt_t page_cnt = BYTE_TO_PAGE(size);
 
 	if(anon == type) {
+		anon_cnt += page_cnt;	
 		map = mmap(NULL, size,
 			PROT_READ | PROT_WRITE, 
 			MAP_SHARED| MAP_ANONYMOUS, -1, 0);
 	} else if (file == type) {
-
+		file_cnt += file_cnt;
 		if(!path) {
 			fprintf(stderr, "path is null\n");
 			exit(1);
@@ -514,7 +527,8 @@ static int job(double exec_time, double program_end, double length)
 		loop_for(length, program_end + 1);
 
 		loop_for(chunk2, program_end + 2);
-
+		phase_cnt++;
+		printf("[US] %ld, F:%ld, A:%ld\n", phase_cnt, file_cnt, anon_cnt);
 		return 1;
 	}
 }
