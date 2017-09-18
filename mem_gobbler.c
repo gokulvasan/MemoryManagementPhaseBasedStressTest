@@ -528,7 +528,7 @@ static int job(double exec_time, double program_end, double length)
 
 		loop_for(chunk2, program_end + 2);
 		phase_cnt++;
-		printf("[US] %ld, F:%ld, A:%ld\n", phase_cnt, file_cnt, anon_cnt);
+		fprintf(stdout, "[US] %ld, F:%ld, A:%ld\n", phase_cnt, file_cnt, anon_cnt);
 		return 1;
 	}
 }
