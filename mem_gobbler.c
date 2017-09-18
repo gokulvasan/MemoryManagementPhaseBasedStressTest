@@ -314,7 +314,7 @@ static void random_touch_n(lt_t *addr, lt_t len)
  *
  */
 #define PAGE_KB 4096
-#define BYTE_TO_PAGE(B) ((B) / (PAGE))
+#define BYTE_TO_PAGE(B) ((B) / (PAGE_KB))
 
 lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 {
