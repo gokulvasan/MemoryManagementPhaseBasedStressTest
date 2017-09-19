@@ -280,7 +280,7 @@ static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
 	int i = 0;
 
 	while(i < MAX_TRY) {
-		lt_t i = rand_intr(begin, end);
+		lt_t i = rand_intr(begin, end-10);
 		if(i >= len)
 			continue;
 		// TODO: getrusage
