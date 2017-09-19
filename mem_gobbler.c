@@ -566,6 +566,7 @@ int main(int argc, char** argv)
 				cur_job,
 				(wctime() - start) * 1000,
 				file_cnt, anon_cnt);
+				kdlskdlsk
 		}
 
 		cur_job++;
