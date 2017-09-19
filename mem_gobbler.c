@@ -323,12 +323,11 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 	lt_t page_cnt = BYTE_TO_PAGE(size);
 
 	if(anon == type) {
-		anon_cnt += page_cnt;	
 		map = mmap(NULL, size,
 			PROT_READ | PROT_WRITE, 
 			MAP_SHARED| MAP_ANONYMOUS, -1, 0);
+		anon_cnt += page_cnt;	
 	} else if (file == type) {
-		file_cnt += file_cnt;
 		if(!path) {
 			fprintf(stderr, "path is null\n");
 			exit(1);
@@ -341,6 +340,7 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 		map = mmap(NULL, size,
 			 PROT_READ | PROT_WRITE,
 			 MAP_PRIVATE, fd, 0);
+		file_cnt += page_cnt;
 	}
 	if(MAP_FAILED == map) {
 		//printf("%s, %d, type: %d\n",path, size, type);
