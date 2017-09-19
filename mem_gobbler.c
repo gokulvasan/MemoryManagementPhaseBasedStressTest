@@ -492,7 +492,7 @@ static void trans_rand_alloc()
 	while(cnt <= MAX_TRANS_HALF) {
 		cnt = randomize_alloc_count();
 	}
-	anon_slice = cnt/4;
+	anon_slice = 0 //cnt/4;
 	//printf("anon slice %d\n", anon_slice);
 	while(cnt) {
 		mem_type_t typ;
