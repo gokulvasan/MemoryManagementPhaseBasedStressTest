@@ -527,7 +527,7 @@ static int job(double exec_time, double program_end, double length)
 
 		loop_for(chunk2, program_end + 2);
 		phase_cnt++;
-		fprintf(stdout, "[US] %ld, F:%ld, A:%ld\n", phase_cnt, file_cnt, anon_cnt);
+		//fprintf(stdout, "[US] %ld, F:%ld, A:%ld\n", phase_cnt, file_cnt, anon_cnt);
 		return 1;
 	}
 }
@@ -562,9 +562,10 @@ int main(int argc, char** argv)
 
 	do {
 		if (verbose) {
-			printf("mmspin/%d @ [j%d]%.4fms\n", getpid(),
+			printf("mmspin/%d @ [j%d]%.4fms: %ld:%ld\n", getpid(),
 				cur_job,
-				(wctime() - start) * 1000);
+				(wctime() - start) * 1000,
+				file_cnt, anon_cnt);
 		}
 
 		cur_job++;
