@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 #include <sys/resource.h> // needed for getrusage 
 /*
  * Memory Gobbler.
@@ -61,6 +62,8 @@ static char* progname;
 static lt_t anon_cnt = 0;
 static lt_t file_cnt = 0;
 static lt_t phase_cnt = 0;
+struct rusage res;
+
 /*
  * Basically tries to maintain
  * array of list of paths and its
@@ -561,11 +564,16 @@ int main(int argc, char** argv)
 	alloc_track_init();
 
 	do {
+		getrusage(RUSAGE_SELF, &res);
 		if (verbose) {
-			printf("mmspin/%d @ [j%d]%.4fms: %ld:%ld\n", getpid(),
+			printf("mmspin/%d @ [j%d]%.4fms: %ld:%ld F%ld:%ld S%ld RSS%ld\n", 
+				getpid(),
 				cur_job,
 				(wctime() - start) * 1000,
-				file_cnt, anon_cnt);
+				file_cnt, anon_cnt,
+				res.ru_minflt, res.ru_majflt,
+				res.ru_nswap,
+				res.ru_maxrss);
 		}
 
 		cur_job++;
