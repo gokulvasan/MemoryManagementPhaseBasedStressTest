@@ -9,11 +9,11 @@ Memory management stress test platform.
 
 RANDOM memory load generator:
 
-RANDOM: this defines what all randomized.
+RANDOM: Below defines what is randomized.
 
 	1. selection of amount of mappings in a phase. 
 	2. selection between file and anon map.
-	3. selection of size.
+	3. selection of size of mapping.
 	4. Touch of a particular map.
 	5. length of a holding time.
 	6. Amount or how many to touch. 
