@@ -1,5 +1,5 @@
 
-Markup : ![picture alt]("https://github.com/gokulvasan/MemoryManagementPhaseBasedStressTest/blob/master/MemoryGobbler.jpg")
+Markup : ![picture alt](https://github.com/gokulvasan/MemoryManagementPhaseBasedStressTest/blob/master/MemoryGobbler.jpg "Memory gobbler")
 
 Author: Gokul Vasan
 
@@ -11,7 +11,7 @@ Memory management stress test platform.
 RANDOM memory load generator:
 
 RANDOM: this defines what all randomized.
-Markup:
+Markup : 
 	1. selection of amount of mappings in a phase. 
 	2. selection between file and anon map.
 	3. selection of size.
