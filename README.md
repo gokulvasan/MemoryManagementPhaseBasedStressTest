@@ -11,6 +11,7 @@ Memory management stress test platform.
 RANDOM memory load generator:
 
 RANDOM: this defines what all randomized.
+
 	1. selection of amount of mappings in a phase. 
 	2. selection between file and anon map.
 	3. selection of size.
@@ -44,6 +45,6 @@ TODO:
 -----
 
 * Use Brk and Sbrk 
-* Option bases phase max set.
+* Option based phase max set.
 * Option to tune anon and file ratio.
-* speed scale for allocation rate
+* speed scale for allocation rate.
