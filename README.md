@@ -1,10 +1,9 @@
+ MEMORY GOBBLER
+===============
 
 ![picture alt](https://github.com/gokulvasan/MemoryManagementPhaseBasedStressTest/blob/master/MemoryGobbler.jpg "Memory gobbler")
 
 Author: Gokul Vasan
-
- MEMORY GOBBLER
-===============
 
 Memory management stress test platform.
 
