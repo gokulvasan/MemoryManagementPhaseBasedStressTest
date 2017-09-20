@@ -28,7 +28,7 @@ OVERVIEW:
 * Touch is random, not sequential, trying to imitate programm's stochastic behavior.
 * Applies quasi-stationary behaviour:
 	* i.e. distribution of page reference remains constant for a period of time.
-	* Period of time is made stochastic and unpredictable.
+	* Period of the constant distribution time is made stochastic and unpredictable.
 * Obeys phase based beaviour, i.e. mostly tries to touch recent allocated pages, but sometimes
   tries touching older phase pages.
 
