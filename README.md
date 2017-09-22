@@ -47,9 +47,9 @@ USAGE:
 **STEP 2: Building the tool**
 * Once the files.h is generated in the build directory, now we can build the memory gobbler. 
 * In the shell run the following in sequence:
-	* > ./autogen.sh
-	* >./configure
- 	* > make
+	*  ./autogen.sh
+	* ./configure
+ 	*  make
 * This will produce binary *memgobble* that is ready for use.
 
 TODO:
