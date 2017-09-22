@@ -20,7 +20,7 @@ RANDOM memory load generator:
 
 OVERVIEW:
 ---------
-* The tool is built with Autoconf, enabling auto-build tools like Open Emebedded portable.
+* The tool is built with Autoconf, enabling auto-build systems like Open Emebedded portable.
 * Applies natural programme like behaviour, i.e. holding and transtion phases.
 * Moreover, unlike other benchmark tool, this uses combination of anon and filemap page.
 * Sequence of selection between anon and file is made random.
