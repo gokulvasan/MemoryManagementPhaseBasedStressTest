@@ -534,6 +534,12 @@ static int job(double exec_time, double program_end, double length)
 		return 1;
 	}
 }
+__attribute__((destructor)) void on_process_exit()
+{
+	printf("Calling After exit call\n");
+	getrusage(RUSAGE_SELF, &res);
+	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
+}
 
 int main(int argc, char** argv)
 {
@@ -563,17 +569,18 @@ int main(int argc, char** argv)
 
 	alloc_track_init();
 
+	printf("FORMAT:\n");
+	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAP : ANONMAP>, < MINFAULT : MAJFAULT>, <RSS>\n");
 	do {
 		getrusage(RUSAGE_SELF, &res);
 		if (verbose) {
-			printf("mmspin/%d @ [j%d]%.4fms: %ld:%ld F%ld:%ld S%ld RSS%ld\n", 
+			printf("%d, %d,  %.4fms, %ld : %ld, %ld : %ld, %ld\n", 
 				getpid(),
 				cur_job,
 				(wctime() - start) * 1000,
 				file_cnt, anon_cnt,
 				res.ru_minflt, res.ru_majflt,
-				res.ru_nswap,
-				res.ru_maxrss);
+				(res.ru_maxrss/4));
 		}
 
 		cur_job++;
