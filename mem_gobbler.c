@@ -39,7 +39,8 @@ typedef unsigned long lt_t;
 #define NUMS 4096
 #define MAX_ALLOC (4096)
 #define ms2ns(ms) ((ms)*1000000LL) 
-
+#define MAX_LIMIT 0xFFFFFFFF
+#define PAGE_SIZE 4096
 /*
  * Concatenator 
  */
@@ -65,6 +66,8 @@ static lt_t phase_cnt = 0;
 static lt_t alloc_nomore = 0;
 struct rusage res;
 
+static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
+static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */ 
 /*
  * Basically tries to maintain
  * array of list of paths and its
@@ -268,8 +271,22 @@ static int randomize_alloc_type(int anon_slice)
 
 static lt_t randomize_alloc_len()
 {
-	int i = rand_lim(max);
+	lt_t max_req = max_limit * PAGE_SIZE;
+	int i = 0;
 
+	if(max_req <= file_lst[0].size)
+		return file_lst[0].size;
+	else {
+		int l = 10;
+		while(l) {
+			l--;
+			i = rand_lim(max);
+			if(file_lst[i].size > max_req)
+				continue;
+			else
+				break;	
+		}
+	}
 	return file_lst[i].size;
 }
 
@@ -389,6 +406,7 @@ static mem_type_t random_allocator_one( int anon_slice )
 		fprintf(stderr,"Failed to add new tracker");
 		exit(1);
 	}
+	curr_alloc += (alloc_len / PAGE_SIZE);
 	return alloc_type;
 }
 
@@ -501,7 +519,7 @@ static void trans_rand_alloc()
 	}
 	anon_slice = cnt/4;
 	//printf("anon slice %d\n", anon_slice);
-	while(cnt) {
+	while(cnt || (curr_alloc < max_limit)) {
 		mem_type_t typ;
 		loop_n(i); /* Small loop to give reality*/
 		typ = random_allocator_one(anon_slice);
@@ -544,7 +562,6 @@ __attribute__((destructor)) void on_process_exit()
 	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
 }
 
-#define MAX_LIMIT 0xFFFFFFFF
 #define OPT "vp:l:"
 int main(int argc, char** argv)
 {
@@ -553,7 +570,6 @@ int main(int argc, char** argv)
 	double scale = 1.0;
 	int cur_job = 0, num_jobs = 0;
 	int verbose = 1;
-	lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
 	lt_t max_phase = MAX_LIMIT; /* maximum number of phases allowed*/ 
 	double cs_length = 1; /* millisecond */
 	int c;
