@@ -565,7 +565,7 @@ int main(int argc, char** argv)
 	start = wctime();
 
 	if(argc > 1) {
-		while(c = getopt(argc, argv, OPT)) {
+		while((c = getopt(argc, argv, OPT)) != -1) {
 			switch(c) {
 			case 'p':
 				max_phase = atol(optarg);
