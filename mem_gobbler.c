@@ -38,8 +38,9 @@
 typedef unsigned long lt_t;
 #define NUMS 4096
 #define MAX_ALLOC (4096)
-#define ms2ns(ms) ((ms)*1000000LL) 
-#define MAX_LIMIT 0xFFFFFFFF
+#define ms2ns(ms) ((ms)*1000000LL)
+/* MAX number of pages*/ 
+#define MAX_LIMIT 1000000
 #define PAGE_SIZE 4096
 /*
  * Concatenator 
@@ -364,7 +365,7 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 		file_cnt += page_cnt;
 	}
 	if(MAP_FAILED == map) {
-		//printf("%s, %d, type: %d\n",path, size, type);
+		printf("%s, %d, type: %d\n",path, size, type);
 		perror("mmap");
 		exit(1);
 	}
