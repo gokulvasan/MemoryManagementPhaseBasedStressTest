@@ -40,12 +40,12 @@ typedef unsigned long lt_t;
 #define MAX_ALLOC (4096)
 #define ms2ns(ms) ((ms)*1000000LL)
 /* MAX number of pages*/ 
-#define MAX_LIMIT 1000000
+#define MAX_LIMIT 10000000
 #define PAGE_SIZE 4096
 /*
  * Concatenator 
  */
-#define FS "/mnt/test_images/"
+#define FS "/media/test_images/"
 #define PATH(name) FS # name
 
 /* This defines maximum allocation in an transition
@@ -66,9 +66,6 @@ static lt_t file_cnt = 0;
 static lt_t phase_cnt = 0;
 static lt_t alloc_nomore = 0;
 struct rusage res;
-
-static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
-static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */ 
 /*
  * Basically tries to maintain
  * array of list of paths and its
@@ -108,6 +105,18 @@ signed long curr = -1; /*current phase index*/
 static alloc_list_t alloc_track[MAX_ALLOC];
 
 #include "files.h"
+
+/*
+ * Tuning the limits:
+ *	More precise this becomes system becomes more 
+ *	Deterministic.
+ */
+
+/* MAximum allocation possible within a phase*/
+static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
+static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
+static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */
+static lt_t speed = max; 
 
 static inline void print_paths(file_lst_size_t *gpath)
 {
@@ -161,7 +170,7 @@ static file_path* get_file_path(unsigned int len)
 static void go_to_nxt_phase()
 {
 	if(curr >= MAX_ALLOC) {
-		printf("reached maximum pahse transitions\n");
+		printf("reached maximum phase transitions\n");
 		exit(1);
 		return;
 	}
@@ -281,7 +290,7 @@ static lt_t randomize_alloc_len()
 		int l = 10;
 		while(l) {
 			l--;
-			i = rand_lim(max);
+			i = rand_intr(0, speed);
 			if(file_lst[i].size > max_req)
 				continue;
 			else
@@ -293,7 +302,7 @@ static lt_t randomize_alloc_len()
 
 static int randomize_alloc_count()
 {
-	return rand_lim(MAX_TRANSITION_CNT);
+	return rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
 }
 
 static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
@@ -305,9 +314,7 @@ static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
 		lt_t i = rand_intr(begin, end-10);
 		if(i >= len)
 			continue;
-		// TODO: getrusage
 		if(addr[i] != 0xf) {
-			//printf("touchi\n"); 
 			addr[i] = 0xf;
 			break;
 		}
@@ -365,7 +372,7 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 		file_cnt += page_cnt;
 	}
 	if(MAP_FAILED == map) {
-		printf("%s, %d, type: %d\n",path, size, type);
+		printf("%s, %ld, type: %d\n",path, size, type);
 		perror("mmap");
 		exit(1);
 	}
@@ -515,12 +522,10 @@ static void trans_rand_alloc()
 
 	go_to_nxt_phase();
 
-	while(cnt <= MAX_TRANS_HALF) {
-		cnt = randomize_alloc_count();
-	}
+	cnt = randomize_alloc_count();
 	anon_slice = cnt/4;
 	//printf("anon slice %d\n", anon_slice);
-	while(cnt || (curr_alloc < max_limit)) {
+	while(cnt && (curr_alloc < max_limit)) {
 		mem_type_t typ;
 		loop_n(i); /* Small loop to give reality*/
 		typ = random_allocator_one(anon_slice);
@@ -563,23 +568,19 @@ __attribute__((destructor)) void on_process_exit()
 	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
 }
 
-#define OPT "vp:l:"
+#define OPT "vp:l:e:M:s:"
 int main(int argc, char** argv)
 {
 	double wcet_ms, period_ms;
+	double wcet = 0;
 	double duration = 0, start = 0;
 	double scale = 1.0;
 	int cur_job = 0, num_jobs = 0;
 	int verbose = 1;
-	lt_t max_phase = MAX_LIMIT; /* maximum number of phases allowed*/ 
+	lt_t max_phase = MAX_ALLOC; /* maximum number of phases allowed*/ 
 	double cs_length = 1; /* millisecond */
 	int c;
 
-	progname = argv[0];
-	wcet_ms   = 50;
-	period_ms = 55;
-	duration = 0xFFFFFF;
-	start = wctime();
 
 	if(argc > 1) {
 		while((c = getopt(argc, argv, OPT)) != -1) {
@@ -591,7 +592,20 @@ int main(int argc, char** argv)
 				max_limit = atol(optarg);
 			break;
 			case 'v':
-				verbose = 1;
+				verbose = 0;
+			break;
+			case 'e':
+				wcet = atol(optarg);
+			break;
+			case 'M':
+				max_alloc_per_phase = atol(optarg);
+				if(max_alloc_per_phase > MAX_TRANSITION_CNT)
+					max_alloc_per_phase = MAX_TRANSITION_CNT;
+			break;
+			case 's':
+				speed = atol(optarg);
+				if(speed >= max)
+					speed = max-1;
 			break;
 			default:
 				fprintf(stderr, "Error in arguments\n");
@@ -600,6 +614,17 @@ int main(int argc, char** argv)
 			}
 		}
 	}
+
+	progname = argv[0];
+	if(wcet)
+		wcet_ms = wcet;
+	else
+		wcet_ms = 55;
+
+	period_ms = 50 * wcet_ms;
+	duration = 0xFFFFFF;
+
+	start = wctime();
 
 	alloc_track_init();
 
@@ -611,7 +636,7 @@ int main(int argc, char** argv)
 		
 		if (verbose) {
 			
-			printf("%d, %d,  %.4fms, %ld, %ld, %ld, %ld , %ld, %ld,  %ld\n", 
+			printf("%d, \t%d,  \t%.4fms, \t%ld, \t%ld, \t%ld, \t%ld , \t%ld, \t%ld,  \t%ld\n", 
 				getpid(),
 				cur_job,
 				(wctime() - start) * 1000,
