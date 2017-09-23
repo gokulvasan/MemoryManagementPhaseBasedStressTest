@@ -1,20 +1,3 @@
-/*************************************************************************
-*    This program is free software: you can redistribute it and/or modify
-*    it under the terms of the GNU General Public License as published by
-*    the Free Software Foundation, either version 3 of the License, or
-*    (at your option) any later version.
-*
-*    This program is distributed in the hope that it will be useful,
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-*    GNU General Public License for more details.
-*
-*    You should have received a copy of the GNU General Public License
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*    
-*    Original Design and implementation by Gokul <gokulvas@xxxxxx.com>, 2017
-*****************************************************************************/
-
 #include <sys/time.h>
 #include <sys/types.h>
 #include <stdio.h>
@@ -79,6 +62,7 @@ static char* progname;
 static lt_t anon_cnt = 0;
 static lt_t file_cnt = 0;
 static lt_t phase_cnt = 0;
+static lt_t alloc_nomore = 0;
 struct rusage res;
 
 /*
@@ -500,6 +484,9 @@ static int loop_for(double exec_time, double emergency_exit)
 	return tmp;
 }
 
+/* 
+ * Core tansition function
+ */
 static void trans_rand_alloc()
 {
 	#define MAX_LOOP 3
@@ -532,22 +519,21 @@ static int job(double exec_time, double program_end, double length)
 	if (wctime() > program_end)
 		return 0;
 	else {
-		trans_rand_alloc();
+		/* TRANSITION: Randomize and touch allocations */
+		if(!alloc_nomore)
+			trans_rand_alloc();
 
 		chunk1 = drand48() * (exec_time - length);
 		chunk2 = exec_time - length - chunk1;
+
+		/* HOLDING: Loop and touch imm allocated pages */
 		loop_for(chunk1, program_end + 1);
 
-		/*TODO: Touch previous phase randomly*/
-		//printf("%d[%ld]->%d\n", randomize_alloc_type(1),
-		//			 randomize_alloc_len(),
-		//		randomize_alloc_count());
-		/* This is the place for randomn touch access */
 		loop_for(length, program_end + 1);
 
 		loop_for(chunk2, program_end + 2);
+
 		phase_cnt++;
-		//fprintf(stdout, "[US] %ld, F:%ld, A:%ld\n", phase_cnt, file_cnt, anon_cnt);
 		return 1;
 	}
 }
@@ -558,47 +544,71 @@ __attribute__((destructor)) void on_process_exit()
 	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
 }
 
+#define MAX_LIMIT 0xFFFFFFFF
+#define OPT "vp:l:"
 int main(int argc, char** argv)
 {
-	//lt_t wcet;
-	//lt_t period;
 	double wcet_ms, period_ms;
 	double duration = 0, start = 0;
 	double scale = 1.0;
 	int cur_job = 0, num_jobs = 0;
-///XXX: Command line args are needed, temporary removal is made...
 	int verbose = 1;
-	//unsigned int job_no;
-
-	//int protocol = -1;
+	lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
+	lt_t max_phase = MAX_LIMIT; /* maximum number of phases allowed*/ 
 	double cs_length = 1; /* millisecond */
+	int c;
 
 	progname = argv[0];
-	wcet_ms   = 50; //atof(argv[optind + 0]);
-	period_ms = 55; //atof(argv[optind + 1]);
-
-	//wcet   = ms2ns(wcet_ms);
-	//period = ms2ns(period_ms);
-
-	duration  = 1000; //atof(argv[optind + 2]);
-	duration += period_ms * 0.001 * (num_jobs - 1);
+	wcet_ms   = 50;
+	period_ms = 55;
+	duration = 0xFFFFFF;
 	start = wctime();
+
+	if(argc > 1) {
+		while(c = getopt(argc, argv, OPT)) {
+			switch(c) {
+			case 'p':
+				max_phase = atol(optarg);
+			break;
+			case 'l':
+				max_limit = atol(optarg);
+			break;
+			case 'v':
+				verbose = 1;
+			break;
+			default:
+				fprintf(stderr, "Error in arguments\n");
+				exit(1);
+			break;
+			}
+		}
+	}
 
 	alloc_track_init();
 
-	printf("FORMAT:\n");
-	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAP : ANONMAP>, < MINFAULT : MAJFAULT>, <RSS>\n");
+	printf("\nFORMAT:\n");
+	printf("Metric: Pages of size 4k\n");
+	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS>\n");
 	do {
 		getrusage(RUSAGE_SELF, &res);
+		
 		if (verbose) {
-			printf("%d, %d,  %.4fms, %ld : %ld, %ld : %ld, %ld\n", 
+			
+			printf("%d, %d,  %.4fms, %ld, %ld, %ld, %ld , %ld, %ld,  %ld\n", 
 				getpid(),
 				cur_job,
 				(wctime() - start) * 1000,
 				file_cnt, anon_cnt,
+				file_cnt + anon_cnt,
 				res.ru_minflt, res.ru_majflt,
+				res.ru_minflt + res.ru_majflt,
 				(res.ru_maxrss/4));
 		}
+		if(max_limit < (file_cnt + anon_cnt))
+			alloc_nomore = 1;
+
+		if( (max_phase < cur_job) && (alloc_nomore) )
+			break;
 
 		cur_job++;
 		/* convert to seconds and scale */
