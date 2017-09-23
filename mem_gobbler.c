@@ -45,7 +45,7 @@ typedef unsigned long lt_t;
 /*
  * Concatenator 
  */
-#define FS "/media/test_images/"
+#define FS "/mnt/test_images/"
 #define PATH(name) FS # name
 
 /* This defines maximum allocation in an transition
