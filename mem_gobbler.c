@@ -647,7 +647,8 @@ int main(int argc, char** argv)
 	printf("Metric: Pages of size 4k\n");
 	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS>\n");
 	do {
-		getrusage(RUSAGE_SELF, &res);
+		struct rusage res1;
+		getrusage(RUSAGE_SELF, &res1);
 
 		if (verbose) {
 
