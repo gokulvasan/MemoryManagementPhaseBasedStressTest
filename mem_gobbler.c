@@ -316,18 +316,25 @@ static lt_t randomize_alloc_count()
 
 static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
 {
-	#define MAX_TRY 20
-	int i = 0;
+	#define MAX_TRY 50
+	lt_t j = MAX_TRY;
+	lt_t i;
 
-	while(i < MAX_TRY) {
-		lt_t i = rand_intr(begin, end-10);
+	while(j) {
+		i = rand_intr(begin, end-10);
 		if(i >= len)
 			continue;
 		if(addr[i] != 0xf) {
 			addr[i] = 0xf;
 			break;
 		}
-		i--;
+		else {
+			addr[i] = 0x00;
+		}
+		begin = begin+ rand_lim(30);
+		if((begin >= len) || (begin >= end))
+			break;
+		j--;
 	}
 }
 
@@ -336,6 +343,7 @@ static void random_touch_n(lt_t *addr, lt_t len)
 	lt_t which_slice = 0;
 	lt_t switcher = len/2;
 	lt_t n = len/1024;
+
 	//printf("len: %ld random: %ld\n",len, n);
 	while(n) {
 		lt_t start = which_slice? switcher : 0;
