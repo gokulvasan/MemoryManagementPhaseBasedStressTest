@@ -614,8 +614,8 @@ int main(int argc, char** argv)
 			break;
 			case 'M':
 				max_alloc_per_phase = atol(optarg);
-				if(max_alloc_per_phase > MAX_TRANSITION_CNT)
-					max_alloc_per_phase = MAX_TRANSITION_CNT;
+				//if(max_alloc_per_phase > MAX_TRANSITION_CNT)
+				//	max_alloc_per_phase = MAX_TRANSITION_CNT;
 			break;
 			case 's':
 				speed = atol(optarg);
