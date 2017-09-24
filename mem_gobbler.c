@@ -636,7 +636,7 @@ int main(int argc, char** argv)
 		
 		if (verbose) {
 			
-			printf("%d, \t%d,  \t%.4fms, \t%ld, \t%ld, \t%ld, \t%ld , \t%ld, \t%ld,  \t%ld\n", 
+			printf("%d, %d, %.4fms, %ld, %ld, %ld, %ld, %ld, %ld, %ld\n", 
 				getpid(),
 				cur_job,
 				(wctime() - start) * 1000,
