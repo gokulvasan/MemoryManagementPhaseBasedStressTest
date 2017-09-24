@@ -658,9 +658,9 @@ int main(int argc, char** argv)
 				(wctime() - start) * 1000,
 				file_cnt, anon_cnt,
 				file_cnt + anon_cnt,
-				res.ru_minflt, res.ru_majflt,
-				res.ru_minflt + res.ru_majflt,
-				(res.ru_maxrss/4));
+				res1.ru_minflt, res1.ru_majflt,
+				res1.ru_minflt + res1.ru_majflt,
+				(res1.ru_maxrss/4));
 		}
 		if(max_limit < (file_cnt + anon_cnt))
 			alloc_nomore = 1;
