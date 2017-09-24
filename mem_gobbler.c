@@ -45,7 +45,16 @@ typedef unsigned long lt_t;
 /*
  * Concatenator 
  */
+/*Enable this for ubuntu or other machines */
+#ifdef DEBUG
+#undef DEBUG
+#endif
+
+#ifdef DEBUG
+#define FS "/media/test_files/"
+#else
 #define FS "/mnt/test_images/"
+#endif
 #define PATH(name) FS # name
 
 /* This defines maximum allocation in an transition
@@ -252,7 +261,7 @@ static long rand_lim(long limit)
 }
 
 /// Begin and end are *inclusive*; => [begin, end]
-lt_t rand_intr(lt_t begin, lt_t end) {
+static lt_t rand_intr(lt_t begin, lt_t end) {
 
     lt_t range = (end - begin) + 1;
     lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
@@ -300,7 +309,7 @@ static lt_t randomize_alloc_len()
 	return file_lst[i].size;
 }
 
-static int randomize_alloc_count()
+static lt_t randomize_alloc_count()
 {
 	return rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
 }
@@ -397,7 +406,7 @@ lt_t* alloc(mem_type_t type, unsigned int len, file_path **node)
 	return mmapper(( (*node) ? (*node)->path : NULL),len, type); 
 }
 
-static mem_type_t random_allocator_one( int anon_slice )
+static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 {
 	int alloc_type = randomize_alloc_type(anon_slice);
 	lt_t alloc_len = randomize_alloc_len();
@@ -414,7 +423,13 @@ static mem_type_t random_allocator_one( int anon_slice )
 		fprintf(stderr,"Failed to add new tracker");
 		exit(1);
 	}
+	if(alloc_len/PAGE_SIZE > *cnt)
+		*cnt = 0;
+	else
+		*cnt -= (alloc_len/PAGE_SIZE);
+ 
 	curr_alloc += (alloc_len / PAGE_SIZE);
+
 	return alloc_type;
 }
 
@@ -516,7 +531,7 @@ static int loop_for(double exec_time, double emergency_exit)
 static void trans_rand_alloc()
 {
 	#define MAX_LOOP 3
-	int cnt = 0;
+	lt_t cnt = 0;
 	int i = rand_lim(MAX_LOOP);
 	int anon_slice;
 
@@ -528,11 +543,11 @@ static void trans_rand_alloc()
 	while(cnt && (curr_alloc < max_limit)) {
 		mem_type_t typ;
 		loop_n(i); /* Small loop to give reality*/
-		typ = random_allocator_one(anon_slice);
+		typ = random_allocator_one(anon_slice, &cnt);
 		if(typ > file) {
 			anon_slice--;
 		}
-		cnt--;
+		//cnt--;
 	}
 }
 
@@ -633,9 +648,9 @@ int main(int argc, char** argv)
 	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS>\n");
 	do {
 		getrusage(RUSAGE_SELF, &res);
-		
+
 		if (verbose) {
-			
+
 			printf("%d, %d, %.4fms, %ld, %ld, %ld, %ld, %ld, %ld, %ld\n", 
 				getpid(),
 				cur_job,
@@ -649,7 +664,7 @@ int main(int argc, char** argv)
 		if(max_limit < (file_cnt + anon_cnt))
 			alloc_nomore = 1;
 
-		if( (max_phase < cur_job) && (alloc_nomore) )
+		if( (max_phase <= cur_job) || (alloc_nomore) )
 			break;
 
 		cur_job++;
