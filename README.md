@@ -55,8 +55,7 @@ USAGE:
 TODO:
 -----
 * Use Brk and Sbrk 
-* Option based phase max set.
 * Option to tune anon and file ratio.
-* speed scale for allocation rate.
+
 
 **WARNING:** Memory stress tool that could slow down the system.
