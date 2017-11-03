@@ -61,7 +61,7 @@ typedef unsigned long lt_t;
 /* This defines maximum allocation in metric of pages in a transition
  *
  */
-#define MAX_TRANSITION_CNT 50
+#define MAX_TRANSITION_CNT 150
 #define MAX_TRANS_HALF (MAX_TRANSITION_CNT/2)
 
 static int num[NUMS];
@@ -433,15 +433,15 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 		fprintf(stderr,"Failed to add new tracker");
 		exit(1);
 	}
-	if(alloc_precision) { 
+	//if(alloc_precision) { 
 		if(alloc_len/PAGE_SIZE > *cnt)
 			*cnt = 0;
 		else
 			*cnt -= (alloc_len/PAGE_SIZE);
-	}
-	else {
-		*cnt--;
-	}
+	//}
+	//else {
+	//	*cnt--;
+	//}
 	curr_alloc += (alloc_len / PAGE_SIZE);
 	return alloc_type;
 }
