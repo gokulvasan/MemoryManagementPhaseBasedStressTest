@@ -61,7 +61,7 @@ typedef unsigned long lt_t;
 /* This defines maximum allocation in metric of pages in a transition
  *
  */
-#define MAX_TRANSITION_CNT 160
+#define MAX_TRANSITION_CNT 50
 #define MAX_TRANS_HALF (MAX_TRANSITION_CNT/2)
 
 static int num[NUMS];
