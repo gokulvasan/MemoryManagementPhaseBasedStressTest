@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <stdbool.h>
 #include <sys/resource.h> // needed for getrusage 
 /*
  * Memory Gobbler.
@@ -57,7 +58,7 @@ typedef unsigned long lt_t;
 #endif
 #define PATH(name) FS # name
 
-/* This defines maximum allocation in an transition
+/* This defines maximum allocation in metric of pages in a transition
  *
  */
 #define MAX_TRANSITION_CNT 160
@@ -123,6 +124,7 @@ static alloc_list_t alloc_track[MAX_ALLOC];
 
 /* MAximum allocation possible within a phase*/
 static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
+static unsigned char alloc_precision = false;
 static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
 static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */
 static lt_t speed = max; 
@@ -431,13 +433,16 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 		fprintf(stderr,"Failed to add new tracker");
 		exit(1);
 	}
-	if(alloc_len/PAGE_SIZE > *cnt)
-		*cnt = 0;
-	else
-		*cnt -= (alloc_len/PAGE_SIZE);
- 
+	if(alloc_precision) { 
+		if(alloc_len/PAGE_SIZE > *cnt)
+			*cnt = 0;
+		else
+			*cnt -= (alloc_len/PAGE_SIZE);
+	}
+	else {
+		*cnt--;
+	}
 	curr_alloc += (alloc_len / PAGE_SIZE);
-
 	return alloc_type;
 }
 
@@ -622,6 +627,7 @@ int main(int argc, char** argv)
 			break;
 			case 'M':
 				max_alloc_per_phase = atol(optarg);
+				alloc_precision = true;
 				//if(max_alloc_per_phase > MAX_TRANSITION_CNT)
 				//	max_alloc_per_phase = MAX_TRANSITION_CNT;
 			break;
