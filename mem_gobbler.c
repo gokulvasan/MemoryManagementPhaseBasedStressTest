@@ -60,7 +60,7 @@ typedef unsigned long lt_t;
 /* This defines maximum allocation in an transition
  *
  */
-#define MAX_TRANSITION_CNT 1600
+#define MAX_TRANSITION_CNT 160
 #define MAX_TRANS_HALF (MAX_TRANSITION_CNT/2)
 
 static int num[NUMS];
