@@ -36,6 +36,16 @@
  *	get opt
  * 		phase max time
  */
+
+/*
+ * TODO: Memory Access pattern behaviour implementation:
+ *	 1. Stride : implement a 2d array.
+ *	 2. Sequential : normal single dimensional array.
+ *	 3. Fix : The Fix represents a single memory access element that always refer the same address.
+ *	 4. Sequential Stride : 
+ *	 5. Random : Combination of all the 4 in a random access pattern
+*/
+
 typedef unsigned long lt_t;
 #define NUMS 4096
 #define MAX_ALLOC (4096)
@@ -43,10 +53,12 @@ typedef unsigned long lt_t;
 /* MAX number of pages*/ 
 #define MAX_LIMIT 10000000
 #define PAGE_SIZE 4096
+
+
 /*
  * Concatenator 
  */
-/*Enable this for ubuntu or other machines */
+/*Enable this for ubuntu or other machines for verbose*/
 #ifdef DEBUG
 #undef DEBUG
 #endif
@@ -114,15 +126,278 @@ typedef struct alloc_list {
 signed long curr = -1; /*current phase index*/
 static alloc_list_t alloc_track[MAX_ALLOC];
 
+/* 
+ * A set of data structures closely related to the  
+ * automatic file generator.
+ */
 #include "files.h"
+
+/* ====================================randomizer: Start================================== */
+
+/* 
+ * A module that randomizes a number within given range
+ *	range: 0 - limit ( excluded )
+ *
+ * Taken from: stack overflow.
+ */
+static long rand_lim(long limit) 
+{
+	long divisor = RAND_MAX/(limit+1);
+	long retval;
+
+	do {
+		retval = rand() / divisor;
+    	} while (retval >= limit);
+
+	return retval;
+}
+
+/// Begin and end are *inclusive*; => [begin, end]
+static lt_t rand_intr(lt_t begin, lt_t end) {
+
+    lt_t range = (end - begin) + 1;
+    lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
+
+    /* Imagine range-sized buckets all in a row, then fire randomly towards
+     * the buckets until you land in one of them. All buckets are equally
+     * likely. If you land off the end of the line of buckets, try again. */
+    lt_t randVal = rand();
+    while (randVal >= limit) randVal = rand();
+
+    /// Return the position you hit in the bucket + begin as random number
+    return (randVal % range) + begin;
+}
+
+static void touch_simple(lt_t *addr)
+{
+	if(*addr != 0xf) {
+		*addr = 0xf;
+	}
+	else {
+		*addr = 0x00;
+	}
+}
+
+/* ====================================randomizer: End======================================= */
+
+/*============================Access pattern Implementation: Start============================= */
+
+/* Access pattern implementation:
+ * From the paper: Online memory access pattern Analysis on an
+ *		application profiling tool.
+ * We can infer that there are 5 basic sequential memory access pattern:
+ *	1. FIX: Fix represents a single memory access element that always refer the same address.
+ *	2. STRIDE: access using a format defined.
+ *	3. SEQUENTIAL: represents a single element of basic sequence of memory accesses without
+ *			any strides or offsets.
+ *	4. SEQENTIAL STRIDE: Sequential Stride pattern is constructed by accessed data elements and the offset between them using
+ *			the format described and the format is constant.
+ *	5. RANDOM/COMPLEX: Permutation and combination of above 4.
+ */
+typedef enum {
+	MEM_FIX, /* Imitates Fix memory access */
+	MEM_STRIDE, /* Imitates stride memory access */
+	MEM_SEQ, /* Imitates sequential memory access */
+	MEM_REP, /* Imitates repeat access */
+	MEM_RAND, /* Imitates extreme pattern of random memory access */
+	MEM_MAX
+}mem_pattern_types;
+
+typedef void (*access_pattern)(lt_t *addr, lt_t len);
+
+typedef struct _mem_pattern {
+	access_pattern patern[MEM_MAX];
+}mem_pattern;
+
+static access_pattern pattern[MEM_MAX];
+
+static mem_pattern pat;
+
+/* 
+ *	For FIX to work we need a static structure
+ *	that book keeps the same element within 
+ *	the addr range.
+ *
+ *	Following is a simple disjoint linear list that
+ *	keeps track of the previous access point.
+ *	TODO: Make it a self balancing tree eg: AVL.
+ */
+typedef struct __fix_bookeeper_node {
+	lt_t *addr;
+	lt_t loc;
+}fix_bk_node;
+
+typedef struct __fix_bookeeper {
+	fix_bk_node node;
+	struct __fix_bookeeper *nxt;	
+}fix_bookeeper;
+
+fix_bookeeper *fix_head = NULL;
+
+static fix_bk_node* fix_exists(lt_t *const addr) 
+{
+	fix_bookeeper *iter = fix_head;
+
+	while(iter) {
+		if(addr == iter->node.addr) 
+			break;
+		iter = iter->nxt;
+	}
+
+	if(iter) {
+		return &(iter->node);
+	}
+	return NULL;
+}
+
+static fix_bk_node* fix_alloc_node(lt_t *addr)
+{
+	fix_bookeeper *b = malloc(sizeof(*b));
+	if(b) {
+		b->nxt = fix_head;
+		fix_head = b;
+	}
+	return &(b->node);
+}
+
+static void fix_rand_loc(fix_bk_node *node, lt_t len)
+{
+	node->loc = rand_intr(0, len-10);
+	node->addr[node->loc] = 0x00;	/* Simple touch */	
+}
+
+static void pattern_fix(lt_t *addr, lt_t len)
+{
+	fix_bk_node *node;
+
+	if(!(node = fix_exists(addr))) {
+		if(node = fix_alloc_node(addr))
+			fix_rand_loc(node, len);
+		else {
+			perror("Failure to alloc fix node: ");
+			exit(EXIT_FAILURE);
+		}
+		goto fin;
+	}
+	touch_simple(&node->addr[node->loc]);
+fin:
+	return;
+}
+
+static lt_t stride_get_offset()
+{
+	return 0;
+}
+
+static void pattern_stride(lt_t *addr, lt_t len)
+{
+	lt_t stride = stride_get_offset();
+	lt_t i = 0;
+	while(i < len) {
+		touch_simple(&addr[i]);
+		i = i + stride;
+	}
+	return;
+}
+
+static void pattern_seq(lt_t *addr, lt_t len)
+{
+	lt_t i = 0;
+
+	while(i < len) {
+		touch_simple(&addr[i]);
+		i++;
+	}
+	return;
+}
+
+/*
+	To make the repeat work:
+		1. we need a distance at which repeat should happen.
+		2. How many times repeat should happen.
+*/
+static lt_t repeat_get_distance(lt_t len)
+{
+	return 0;
+}
+
+static lt_t repeat_get_count(lt_t len)
+{
+
+	return 0;
+}
+
+static void pattern_repeat(lt_t *addr, lt_t len)
+{
+	lt_t dist = repeat_get_distance(len);
+	lt_t rep_count;
+	lt_t i;
+
+	for(rep_count = repeat_get_count(len); rep_count > 0; rep_count--) {
+		i = 0;
+		while(i < dist) {
+			touch_simple(&addr[i]);
+			i++;			
+		}
+	}
+	return;
+}
+
+static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
+{
+	#define MAX_TRY 50
+	lt_t j = MAX_TRY;
+	lt_t i;
+
+	while(j) {
+		i = rand_intr(begin, end-10);
+		if(i >= len)
+			continue;
+		if(addr[i] != 0xf) {
+			addr[i] = 0xf;
+			break;
+		}
+		else {
+			addr[i] = 0x00;
+		}
+		begin = begin+ rand_lim(30);
+		if((begin >= len) || (begin >= end))
+			break;
+		j--;
+	}
+}
+
+static void random_touch_n(lt_t *addr, lt_t len)
+{
+	lt_t which_slice = 0;
+	lt_t switcher = len/2;
+	lt_t n = len/1024;
+
+	//printf("len: %ld random: %ld\n",len, n);
+	while(n) {
+		lt_t start = which_slice? switcher : 0;
+		lt_t end = which_slice? len : switcher;	
+		random_touch(addr, start, end, len);
+		which_slice = !which_slice;
+		n--;
+	}
+}
+
+static void pattern_rand(lt_t *addr, lt_t len)
+{
+	random_touch_n(addr, len);	
+	return;
+}
+
+/*=================================Access pattern Implementation: End================================= */
 
 /*
  * Tuning the limits:
- *	More precise this becomes system becomes more 
- *	Deterministic.
+ *	More precise the parameters becomes system 
+ *	becomes more Deterministic.
  */
 
-/* MAximum allocation possible within a phase*/
+/* Maximum allocation possible within a phase*/
 static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
 static unsigned char alloc_precision = false;
 static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
@@ -243,45 +518,10 @@ static int del_alloc(long  phase, lt_t *address)
 }
 #endif 
 
-/* randomizer */
-/* 
- * A module that randomizes a number within given range
- *	range: 0 - limit ( excluded )
- *
- * Taken from: stack overflow.
- */
-static long rand_lim(long limit) 
-{
-	long divisor = RAND_MAX/(limit+1);
-	long retval;
-
-	do {
-		retval = rand() / divisor;
-    	} while (retval >= limit);
-
-	return retval;
-}
-
-/// Begin and end are *inclusive*; => [begin, end]
-static lt_t rand_intr(lt_t begin, lt_t end) {
-
-    lt_t range = (end - begin) + 1;
-    lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
-
-    /* Imagine range-sized buckets all in a row, then fire randomly towards
-     * the buckets until you land in one of them. All buckets are equally
-     * likely. If you land off the end of the line of buckets, try again. */
-    lt_t randVal = rand();
-    while (randVal >= limit) randVal = rand();
-
-    /// Return the position you hit in the bucket + begin as random number
-    return (randVal % range) + begin;
-}
-
 /* 
 	Thought is to maintain 3:1 ratio between anon and file
 	Slice defines that ratio: if anon_slice is 0 then only possibility
-	is file anon.
+	is file.
 */
 static int randomize_alloc_type(int anon_slice)
 {
@@ -314,46 +554,6 @@ static lt_t randomize_alloc_len()
 static lt_t randomize_alloc_count()
 {
 	return rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
-}
-
-static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
-{
-	#define MAX_TRY 50
-	lt_t j = MAX_TRY;
-	lt_t i;
-
-	while(j) {
-		i = rand_intr(begin, end-10);
-		if(i >= len)
-			continue;
-		if(addr[i] != 0xf) {
-			addr[i] = 0xf;
-			break;
-		}
-		else {
-			addr[i] = 0x00;
-		}
-		begin = begin+ rand_lim(30);
-		if((begin >= len) || (begin >= end))
-			break;
-		j--;
-	}
-}
-
-static void random_touch_n(lt_t *addr, lt_t len)
-{
-	lt_t which_slice = 0;
-	lt_t switcher = len/2;
-	lt_t n = len/1024;
-
-	//printf("len: %ld random: %ld\n",len, n);
-	while(n) {
-		lt_t start = which_slice? switcher : 0;
-		lt_t end = which_slice? len : switcher;	
-		random_touch(addr, start, end, len);
-		which_slice = !which_slice;
-		n--;
-	}
 }
 /*Allocator*/
 /*
@@ -434,10 +634,10 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 		exit(1);
 	}
 	//if(alloc_precision) { 
-		if(alloc_len/PAGE_SIZE > *cnt)
-			*cnt = 0;
-		else
-			*cnt -= (alloc_len/PAGE_SIZE);
+	if(alloc_len/PAGE_SIZE > *cnt)
+		*cnt = 0;
+	else
+		*cnt -= (alloc_len/PAGE_SIZE);
 	//}
 	//else {
 	//	*cnt--;
@@ -474,6 +674,10 @@ int lt_sleep(lt_t timeout)
 	return nanosleep(&delay, NULL);
 }
 
+/*
+ * This is the primary holding state of a phase.
+ * Within the holding phase, the system generates pattern.
+ */
 static void touch(lt_t i)
 {
 	lt_t *addr;
@@ -484,11 +688,18 @@ static void touch(lt_t i)
 			//printf("random touch\n");
 			addr = alloc_track[curr].lst[i].addr;
 			len = alloc_track[curr].lst[i].len;
+			/* TODO: Here is the point where the pattern is defined or 
+			 * pattern changes.
+			 */
 			random_touch_n(addr, len);
 		}
 	}
 }
 
+/* 
+ * Simple loop not touching any pages of the memory.
+ * Basically a relax for memory.
+ */
 static int loop_once(void)
 {
 	int i, j = 0;
@@ -564,6 +775,7 @@ static void trans_rand_alloc()
 	}
 }
 
+/* Each job is a phase: transition and holding */
 static int job(double exec_time, double program_end, double length)
 {
 	double chunk1, chunk2;
