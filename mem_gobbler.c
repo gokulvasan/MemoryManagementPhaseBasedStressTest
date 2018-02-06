@@ -11,6 +11,7 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 #include <stdbool.h>
+#include <math.h>
 #include <sys/resource.h> // needed for getrusage 
 /*
  * Memory Gobbler.
@@ -38,7 +39,6 @@
  */
 
 /*
- * TODO: Memory Access pattern behaviour implementation:
  *	 1. Stride : implement a 2d array.
  *	 2. Sequential : normal single dimensional array.
  *	 3. Fix : The Fix represents a single memory access element that always refer the same address.
@@ -47,9 +47,11 @@
 */
 
 typedef unsigned long lt_t;
+
 #define NUMS 4096
 #define MAX_ALLOC (4096)
 #define ms2ns(ms) ((ms)*1000000LL)
+
 /* MAX number of pages*/ 
 #define MAX_LIMIT 10000000
 #define PAGE_SIZE 4096
@@ -66,8 +68,9 @@ typedef unsigned long lt_t;
 #ifdef DEBUG
 #define FS "/media/test_files/"
 #else
-#define FS "/mnt/test_images/"
+#define FS "/media/test_images/"
 #endif
+
 #define PATH(name) FS # name
 
 /* This defines maximum allocation in metric of pages in a transition
@@ -76,7 +79,6 @@ typedef unsigned long lt_t;
 #define MAX_TRANSITION_CNT 150
 #define MAX_TRANS_HALF (MAX_TRANSITION_CNT/2)
 
-static int num[NUMS];
 static char* progname;
 
 /*
@@ -134,6 +136,18 @@ static alloc_list_t alloc_track[MAX_ALLOC];
 
 /* ====================================randomizer: Start================================== */
 
+/* CPU time consumed so far in seconds */
+double cputime(void)
+{
+	struct timespec ts;
+	int err;
+	err = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+	if (err != 0)
+		perror("clock_gettime");
+	return (ts.tv_sec + 1E-9 * ts.tv_nsec);
+}
+
+
 /* 
  * A module that randomizes a number within given range
  *	range: 0 - limit ( excluded )
@@ -155,21 +169,25 @@ static long rand_lim(long limit)
 /// Begin and end are *inclusive*; => [begin, end]
 static lt_t rand_intr(lt_t begin, lt_t end) {
 
-    lt_t range = (end - begin) + 1;
-    lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
-
-    /* Imagine range-sized buckets all in a row, then fire randomly towards
-     * the buckets until you land in one of them. All buckets are equally
-     * likely. If you land off the end of the line of buckets, try again. */
-    lt_t randVal = rand();
-    while (randVal >= limit) randVal = rand();
-
-    /// Return the position you hit in the bucket + begin as random number
-    return (randVal % range) + begin;
+	lt_t range = (end - begin) + 1;
+	lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
+	lt_t upper = 128;
+	
+	/* Imagine range-sized buckets all in a row, then fire randomly towards
+	* the buckets until you land in one of them. All buckets are equally
+	* likely. If you land off the end of the line of buckets, try again. */
+	lt_t randVal = rand();
+	while ((randVal >= limit) && upper) { 
+		randVal = rand();
+		upper--;
+	}
+	/// Return the position you hit in the bucket + begin as random number
+	return (randVal % range) + begin;
 }
 
 static void touch_simple(lt_t *addr)
 {
+	/* Notice the function reads and then writes*/
 	if(*addr != 0xf) {
 		*addr = 0xf;
 	}
@@ -180,19 +198,19 @@ static void touch_simple(lt_t *addr)
 
 /* ====================================randomizer: End======================================= */
 
+
 /*============================Access pattern Implementation: Start============================= */
 
 /* Access pattern implementation:
  * From the paper: Online memory access pattern Analysis on an
- *		application profiling tool.
+ *			application profiling tool.
  * We can infer that there are 5 basic sequential memory access pattern:
  *	1. FIX: Fix represents a single memory access element that always refer the same address.
  *	2. STRIDE: access using a format defined.
  *	3. SEQUENTIAL: represents a single element of basic sequence of memory accesses without
  *			any strides or offsets.
- *	4. SEQENTIAL STRIDE: Sequential Stride pattern is constructed by accessed data elements and the offset between them using
- *			the format described and the format is constant.
- *	5. RANDOM/COMPLEX: Permutation and combination of above 4.
+ *	4. REPEAT: access to a particular element at a defined interval, imitates loop.
+ *	5. RANDOM/COMPLEX: Other Extreme, completly sporadic. P.S. sporadicity depends on rand and rand_intr functionality.
  */
 typedef enum {
 	MEM_FIX, /* Imitates Fix memory access */
@@ -205,13 +223,7 @@ typedef enum {
 
 typedef void (*access_pattern)(lt_t *addr, lt_t len);
 
-typedef struct _mem_pattern {
-	access_pattern patern[MEM_MAX];
-}mem_pattern;
-
 static access_pattern pattern[MEM_MAX];
-
-static mem_pattern pat;
 
 /* 
  *	For FIX to work we need a static structure
@@ -254,6 +266,8 @@ static fix_bk_node* fix_alloc_node(lt_t *addr)
 {
 	fix_bookeeper *b = malloc(sizeof(*b));
 	if(b) {
+		b->node.addr = addr;
+		b->node.loc = 0;
 		b->nxt = fix_head;
 		fix_head = b;
 	}
@@ -262,7 +276,15 @@ static fix_bk_node* fix_alloc_node(lt_t *addr)
 
 static void fix_rand_loc(fix_bk_node *node, lt_t len)
 {
+	if(len <= 0)
+		printf("len is less than zero\n");
+
 	node->loc = rand_intr(0, len-10);
+	if(node->loc > len) {
+		printf("something wrong\n");
+		node->loc = len - 100;
+	}
+	printf("deciding on loc : %ld\n", node->loc);
 	node->addr[node->loc] = 0x00;	/* Simple touch */	
 }
 
@@ -270,11 +292,14 @@ static void pattern_fix(lt_t *addr, lt_t len)
 {
 	fix_bk_node *node;
 
+	if(!addr || !len)
+		goto fin;
+
 	if(!(node = fix_exists(addr))) {
 		if(node = fix_alloc_node(addr))
 			fix_rand_loc(node, len);
 		else {
-			perror("Failure to alloc fix node: ");
+			perror("Failure to alloc fix's node:");
 			exit(EXIT_FAILURE);
 		}
 		goto fin;
@@ -284,15 +309,33 @@ fin:
 	return;
 }
 
-static lt_t stride_get_offset()
+
+static lt_t stride_get_offset(lt_t len)
 {
-	return 0;
+
+#define STRIDE_OFFSET(l, c) ((l)/(c))
+#define STRIDE_CUT 1000
+
+	lt_t stride = 0;
+	lt_t piece = STRIDE_CUT;
+ 	
+	do {
+		stride = STRIDE_OFFSET(len, piece);
+		piece = piece >> 1;		
+	} while(!stride);
+
+	return stride;
 }
 
 static void pattern_stride(lt_t *addr, lt_t len)
 {
-	lt_t stride = stride_get_offset();
+	lt_t stride = stride_get_offset(len);
 	lt_t i = 0;
+	///XXX: handle user defined stride pattern.
+	if(!stride) {
+		fprintf(stderr, "stride returns 0\n");			
+	}
+
 	while(i < len) {
 		touch_simple(&addr[i]);
 		i = i + stride;
@@ -316,28 +359,57 @@ static void pattern_seq(lt_t *addr, lt_t len)
 		1. we need a distance at which repeat should happen.
 		2. How many times repeat should happen.
 */
-static lt_t repeat_get_distance(lt_t len)
+static lt_t repeat_get_distance(const lt_t len)
 {
+	/*XXX: For now lets simply use stride get offset */
+	lt_t distance =  stride_get_offset(len); 	
+	return distance;
+}
+
+#define CEILING_POS(X) ((X-(int)(X)) > 0 ? (int)(X+1) : (int)(X))
+#define CEILING_NEG(X) ((X-(int)(X)) < 0 ? (int)(X-1) : (int)(X))
+#define CEIL(X) ( ((X) > 0) ? CEILING_POS(X) : CEILING_NEG(X) )
+
+static lt_t repeat_get_count(const lt_t dist)
+{
+	#define MAX_DIST 1000
+	#define MIN_CNT 2
+	#define MAX_CNT 5
+	/*
+	 * If, repeat distance is big, then count should be small
+	 * big? What do you mean by big?
+	 * XXX: We have to define this more elobrately.
+	 * but, for now we will hardcode it for now. 
+	 */
+	if(!dist)
+		return 0;
+
+	if(dist >= MAX_DIST) {
+		return MIN_CNT;
+	}
+	else {
+		double per_dec;
+
+		per_dec = (MAX_DIST - dist);
+		per_dec = per_dec/MAX_DIST;
+		per_dec = CEIL((MAX_CNT * per_dec));
+
+		return (per_dec);
+	}
 	return 0;
 }
 
-static lt_t repeat_get_count(lt_t len)
-{
-
-	return 0;
-}
-
-static void pattern_repeat(lt_t *addr, lt_t len)
+static void pattern_repeat (lt_t *addr, lt_t len)
 {
 	lt_t dist = repeat_get_distance(len);
 	lt_t rep_count;
 	lt_t i;
 
-	for(rep_count = repeat_get_count(len); rep_count > 0; rep_count--) {
+	for(rep_count = repeat_get_count(dist); rep_count > 0; rep_count--) {
 		i = 0;
 		while(i < dist) {
 			touch_simple(&addr[i]);
-			i++;			
+			i++;
 		}
 	}
 	return;
@@ -350,17 +422,23 @@ static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
 	lt_t i;
 
 	while(j) {
+		void *p = addr;
+
 		i = rand_intr(begin, end-10);
+		//i = i - begin;
+
 		if(i >= len)
 			continue;
-		if(addr[i] != 0xf) {
-			addr[i] = 0xf;
+
+		if(((char*)p)[i] != 0xf) {
+			((char*)p)[i] = 0xf;
 			break;
 		}
 		else {
-			addr[i] = 0x00;
+			((char*)p)[i] = 0x00;
 		}
-		begin = begin+ rand_lim(30);
+
+		begin = begin + rand_lim(30);
 		if((begin >= len) || (begin >= end))
 			break;
 		j--;
@@ -373,7 +451,6 @@ static void random_touch_n(lt_t *addr, lt_t len)
 	lt_t switcher = len/2;
 	lt_t n = len/1024;
 
-	//printf("len: %ld random: %ld\n",len, n);
 	while(n) {
 		lt_t start = which_slice? switcher : 0;
 		lt_t end = which_slice? len : switcher;	
@@ -402,7 +479,8 @@ static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
 static unsigned char alloc_precision = false;
 static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
 static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */
-static lt_t speed = max; 
+static lt_t speed = max; /* The value of max arrives from files.h*/
+static lt_t access_type = MEM_RAND;
 
 static inline void print_paths(file_lst_size_t *gpath)
 {
@@ -419,7 +497,8 @@ static file_path *find_avail_node(int i)
 	file_path *node = file_lst[i].paths;
 	while(node->path) {
 		if(!node->alloc) {
-			break;	
+			//node->alloc = 1;
+			break;
 		}
 		node++;
 	}
@@ -433,9 +512,10 @@ static file_path* get_file_path(unsigned int len)
 {
 	file_path *node = NULL;
 	int i;
-
+	
+	/* Normal first best fit for the length*/
 	for(i = 0; i<max; i++) {
-		//printf("%d\n", len);
+		printf("Asked length is : %d\n", len);
 		if(file_lst[i].size >= len) {
 			node = find_avail_node(i);
 			if(!node)
@@ -480,7 +560,7 @@ static int add_new_alloc(lt_t *address, long len, mem_type_t type)
 	alloc_track[curr].lst[i].len = len;
 	alloc_track[curr].lst[i].type = type;
 	alloc_track[curr].list_count++;
-	return 0;
+	return 1;
 }
 
 #if 0
@@ -545,16 +625,88 @@ static lt_t randomize_alloc_len()
 			if(file_lst[i].size > max_req)
 				continue;
 			else
-				break;	
+				break;
 		}
 	}
 	return file_lst[i].size;
 }
 
-static lt_t randomize_alloc_count()
+static lt_t randomize_alloc_count(int precision)
 {
-	return rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
+	lt_t i = 0;
+	if(precision)
+		i = rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
+	else
+		i = rand_intr(5, MAX_TRANSITION_CNT >> 4);
+
+	return i;
 }
+/* wall-clock time in seconds */
+double wctime(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return (tv.tv_sec + 1E-6 * tv.tv_usec);
+}
+
+int lt_sleep(lt_t timeout)
+{
+	struct timespec delay;
+
+	delay.tv_sec  = timeout / 1000000000L;
+	delay.tv_nsec = timeout % 1000000000L;
+	return nanosleep(&delay, NULL);
+}
+
+/*
+ * This is the primary holding state of a phase.
+ * Within the holding phase, the system generates pattern.
+ */
+static void touch(lt_t i)
+{
+	lt_t *addr;
+	lt_t len;
+
+	if(curr >  0) {
+		if(i >= 0) {
+			//printf("random touch\n");
+			addr = alloc_track[curr].lst[i].addr;
+			len = alloc_track[curr].lst[i].len;
+			/* TODO: Here is the point where the pattern is defined or 
+			 * pattern changes.
+			 */
+			//printf("addr: %p len: %ld\n", addr, len);
+			pattern_rand(addr, len);
+		}
+	}
+}
+
+
+/* 
+ * Simple loop not touching any pages of the memory.
+ * Basically a relax for memory.
+ */
+static int num[NUMS];
+static int loop_once(void)
+{
+	int i, j = 0;
+	for (i = 0; i < NUMS; i++)
+		j += num[i]++;
+	return j;
+}
+
+static void loop_n(int n)
+{
+	while(n) {
+		lt_t cnt = alloc_track[curr].list_count;
+		/* touch only last element*/
+		printf("Index touch is: %ld\n", cnt-1);
+		touch(cnt-1);
+		loop_once();
+		n--;
+	}
+}
+
 /*Allocator*/
 /*
  * This randomizes the sequence
@@ -574,15 +726,16 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 		map = mmap(NULL, size,
 			PROT_READ | PROT_WRITE, 
 			MAP_SHARED| MAP_ANONYMOUS, -1, 0);
-		anon_cnt += page_cnt;	
+		anon_cnt += page_cnt;
 	} else if (file == type) {
 		if(!path) {
 			fprintf(stderr, "path is null\n");
 			exit(1);
 		}
+		printf("PATH: %s\n", path);
 		fd = open(path, O_RDWR);
 		if(-1 == fd) {
-			perror("open");
+			perror("open is the error");
 			exit(1);
 		}
 		map = mmap(NULL, size,
@@ -627,95 +780,56 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 	addr = alloc(alloc_type, alloc_len, &node);
 	alloc_suc = add_new_alloc(addr, alloc_len, alloc_type);
 
-	if(node && (alloc_suc >=0))
+	if(node && (alloc_suc > 0)) {
 		node->alloc = alloc_suc;
+	}
 	else if(alloc_suc < 0) {
 		fprintf(stderr,"Failed to add new tracker");
 		exit(1);
 	}
-	//if(alloc_precision) { 
-	if(alloc_len/PAGE_SIZE > *cnt)
-		*cnt = 0;
-	else
-		*cnt -= (alloc_len/PAGE_SIZE);
-	//}
-	//else {
-	//	*cnt--;
-	//}
+
+	if(alloc_precision) { 
+		if(alloc_len/PAGE_SIZE > *cnt)
+			*cnt = 0;
+		else 
+			*cnt -= (alloc_len/PAGE_SIZE);
+	}
+	else {
+		printf("cnt : %ld\n", *cnt);
+		*cnt = *cnt - 1;
+	}
 	curr_alloc += (alloc_len / PAGE_SIZE);
 	return alloc_type;
 }
 
-/* CPU time consumed so far in seconds */
-double cputime(void)
-{
-	struct timespec ts;
-	int err;
-	err = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
-	if (err != 0)
-		perror("clock_gettime");
-	return (ts.tv_sec + 1E-9 * ts.tv_nsec);
-}
-
-/* wall-clock time in seconds */
-double wctime(void)
-{
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return (tv.tv_sec + 1E-6 * tv.tv_usec);
-}
-
-int lt_sleep(lt_t timeout)
-{
-	struct timespec delay;
-
-	delay.tv_sec  = timeout / 1000000000L;
-	delay.tv_nsec = timeout % 1000000000L;
-	return nanosleep(&delay, NULL);
-}
-
-/*
- * This is the primary holding state of a phase.
- * Within the holding phase, the system generates pattern.
- */
-static void touch(lt_t i)
-{
-	lt_t *addr;
-	lt_t len;
-
-	if(curr >  0) {
-		if(i > 0) {
-			//printf("random touch\n");
-			addr = alloc_track[curr].lst[i].addr;
-			len = alloc_track[curr].lst[i].len;
-			/* TODO: Here is the point where the pattern is defined or 
-			 * pattern changes.
-			 */
-			random_touch_n(addr, len);
-		}
-	}
-}
-
 /* 
- * Simple loop not touching any pages of the memory.
- * Basically a relax for memory.
+ * Core tansition function
  */
-static int loop_once(void)
+static void trans_rand_alloc()
 {
-	int i, j = 0;
-	for (i = 0; i < NUMS; i++)
-		j += num[i]++;
-	return j;
-}
+	#define MAX_LOOP 3
+	lt_t cnt = 0;
+	int i = rand_lim(MAX_LOOP);
+	int anon_slice;
 
-static void loop_n(int n)
-{
-	while(n) {
-		lt_t cnt = alloc_track[curr].list_count;
-		/* touch only last element*/
-		touch(cnt-1);
-		loop_once();
-		n--;
+	go_to_nxt_phase();
+
+	if(alloc_precision)
+		cnt = randomize_alloc_count(1);
+	else
+		cnt = randomize_alloc_count(0);
+
+	anon_slice = cnt/4;
+	//printf("anon slice %d\n", anon_slice);
+	printf("transition allocation count: %ld\n", cnt);
+	while(cnt /*&& (curr_alloc < max_limit)*/) {
+		mem_type_t typ;
+		typ = random_allocator_one(anon_slice, &cnt);
+		loop_n(i); /* Small loop that touches only the last to give reality*/
+		if(typ > file) {
+			anon_slice--;
+		}
+		//cnt--;
 	}
 }
 
@@ -725,14 +839,15 @@ static int loop_for(double exec_time, double emergency_exit)
 	int tmp = 0;
 	double start = cputime();
 	double now = cputime();
-	long i = alloc_track[curr].list_count;
+	lt_t i = alloc_track[curr].list_count;
 
+//	printf("list count: %ld\n", i);
 	while (now + last_loop < start + exec_time) {
 		loop_start = now;
 
 		/* touch the index i @ curr phase */
-		if(--i >= 0) {
-			touch(i);
+		if(--i > 0) {
+			touch(i-1);
 		}
 		else {
 		   i = alloc_track[curr].list_count;
@@ -748,37 +863,11 @@ static int loop_for(double exec_time, double emergency_exit)
 	}
 	return tmp;
 }
-
-/* 
- * Core tansition function
- */
-static void trans_rand_alloc()
-{
-	#define MAX_LOOP 3
-	lt_t cnt = 0;
-	int i = rand_lim(MAX_LOOP);
-	int anon_slice;
-
-	go_to_nxt_phase();
-
-	cnt = randomize_alloc_count();
-	anon_slice = cnt/4;
-	//printf("anon slice %d\n", anon_slice);
-	while(cnt && (curr_alloc < max_limit)) {
-		mem_type_t typ;
-		loop_n(i); /* Small loop to give reality*/
-		typ = random_allocator_one(anon_slice, &cnt);
-		if(typ > file) {
-			anon_slice--;
-		}
-		//cnt--;
-	}
-}
-
 /* Each job is a phase: transition and holding */
 static int job(double exec_time, double program_end, double length)
 {
 	double chunk1, chunk2;
+	lt_t i ;
 
 	if (wctime() > program_end)
 		return 0;
@@ -786,6 +875,9 @@ static int job(double exec_time, double program_end, double length)
 		/* TRANSITION: Randomize and touch allocations */
 		if(!alloc_nomore)
 			trans_rand_alloc();
+
+		i = alloc_track[curr].list_count;
+		printf("list count per phase: %ld\n", i);
 
 		chunk1 = drand48() * (exec_time - length);
 		chunk2 = exec_time - length - chunk1;
@@ -801,6 +893,7 @@ static int job(double exec_time, double program_end, double length)
 		return 1;
 	}
 }
+
 __attribute__((destructor)) void on_process_exit()
 {
 	printf("Calling After exit call\n");
@@ -808,7 +901,7 @@ __attribute__((destructor)) void on_process_exit()
 	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
 }
 
-#define OPT "vp:l:e:M:s:"
+#define OPT "vp:l:e:M:s:t:"
 int main(int argc, char** argv)
 {
 	double wcet_ms, period_ms;
@@ -820,7 +913,6 @@ int main(int argc, char** argv)
 	lt_t max_phase = MAX_ALLOC; /* maximum number of phases allowed*/ 
 	double cs_length = 1; /* millisecond */
 	int c;
-
 
 	if(argc > 1) {
 		while((c = getopt(argc, argv, OPT)) != -1) {
@@ -848,6 +940,13 @@ int main(int argc, char** argv)
 				if(speed >= max)
 					speed = max-1;
 			break;
+			case 't':
+				access_type = atol(optarg);
+				if(access_type >= MEM_MAX) {
+					fprintf(stderr, "Wrong access type\n");
+					exit(1);	
+				}
+			break;
 			default:
 				fprintf(stderr, "Error in arguments\n");
 				exit(1);
@@ -868,7 +967,8 @@ int main(int argc, char** argv)
 	start = wctime();
 
 	alloc_track_init();
-
+	
+	//printf("%lu\n", sizeof(lt_t));
 	printf("\nFORMAT:\n");
 	printf("Metric: Pages of size 4k\n");
 	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS>\n");
@@ -895,6 +995,7 @@ int main(int argc, char** argv)
 			break;
 
 		cur_job++;
+
 		/* convert to seconds and scale */
 	} while (job(wcet_ms * 0.001 * scale, start + duration,
 		    cs_length * 0.001));
