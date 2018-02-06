@@ -53,7 +53,7 @@ typedef unsigned long lt_t;
 #define ms2ns(ms) ((ms)*1000000LL)
 
 /* MAX number of pages*/ 
-#define MAX_LIMIT 10000000
+#define MAX_LIMIT 100000000
 #define PAGE_SIZE 4096
 
 
@@ -146,7 +146,6 @@ double cputime(void)
 		perror("clock_gettime");
 	return (ts.tv_sec + 1E-9 * ts.tv_nsec);
 }
-
 
 /* 
  * A module that randomizes a number within given range
@@ -495,31 +494,37 @@ static inline void print_paths(file_lst_size_t *gpath)
 static file_path *find_avail_node(int i)
 {
 	file_path *node = file_lst[i].paths;
+
 	while(node->path) {
 		if(!node->alloc) {
-			//node->alloc = 1;
+			//printf("found a vaild file: %s\n", node->path);
 			break;
 		}
+		//printf("not finding the val\n");
 		node++;
 	}
 
-	if(!node->path)
+	if(!node->path) {
+		//printf("node->path is NULL\n");
 		return NULL;
+	}
 	return node;
 }
 
-static file_path* get_file_path(unsigned int len)
+static file_path* get_file_path(lt_t len)
 {
 	file_path *node = NULL;
 	int i;
-	
+
 	/* Normal first best fit for the length*/
 	for(i = 0; i<max; i++) {
-		printf("Asked length is : %d\n", len);
+		//printf("Asked length is : %ld : %ld\n", len, file_lst[i].size);
 		if(file_lst[i].size >= len) {
+			//printf("Found\n");
 			node = find_avail_node(i);
 			if(!node)
 				continue;
+			break;
 		}
 	}
 	return node;
@@ -700,7 +705,7 @@ static void loop_n(int n)
 	while(n) {
 		lt_t cnt = alloc_track[curr].list_count;
 		/* touch only last element*/
-		printf("Index touch is: %ld\n", cnt-1);
+		//printf("Index touch is: %ld\n", cnt-1);
 		touch(cnt-1);
 		loop_once();
 		n--;
@@ -732,7 +737,7 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 			fprintf(stderr, "path is null\n");
 			exit(1);
 		}
-		printf("PATH: %s\n", path);
+		//printf("PATH: %s\n", path);
 		fd = open(path, O_RDWR);
 		if(-1 == fd) {
 			perror("open is the error");
@@ -744,7 +749,7 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 		file_cnt += page_cnt;
 	}
 	if(MAP_FAILED == map) {
-		printf("%s, %ld, type: %d\n",path, size, type);
+		//printf("%s, %ld, type: %d\n",path, size, type);
 		perror("mmap");
 		exit(1);
 	}
@@ -757,7 +762,7 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 	return map;
 }
 
-lt_t* alloc(mem_type_t type, unsigned int len, file_path **node)
+lt_t* alloc(mem_type_t type, lt_t len, file_path **node)
 {
 	//printf("type: %d len: %d\n", type, len);
 	if(anon == type) {
@@ -795,7 +800,7 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 			*cnt -= (alloc_len/PAGE_SIZE);
 	}
 	else {
-		printf("cnt : %ld\n", *cnt);
+		//printf("cnt : %ld\n", *cnt);
 		*cnt = *cnt - 1;
 	}
 	curr_alloc += (alloc_len / PAGE_SIZE);
@@ -821,7 +826,6 @@ static void trans_rand_alloc()
 
 	anon_slice = cnt/4;
 	//printf("anon slice %d\n", anon_slice);
-	printf("transition allocation count: %ld\n", cnt);
 	while(cnt /*&& (curr_alloc < max_limit)*/) {
 		mem_type_t typ;
 		typ = random_allocator_one(anon_slice, &cnt);
@@ -877,7 +881,7 @@ static int job(double exec_time, double program_end, double length)
 			trans_rand_alloc();
 
 		i = alloc_track[curr].list_count;
-		printf("list count per phase: %ld\n", i);
+		//printf("list count per phase: %ld\n", i);
 
 		chunk1 = drand48() * (exec_time - length);
 		chunk2 = exec_time - length - chunk1;
@@ -968,7 +972,6 @@ int main(int argc, char** argv)
 
 	alloc_track_init();
 	
-	//printf("%lu\n", sizeof(lt_t));
 	printf("\nFORMAT:\n");
 	printf("Metric: Pages of size 4k\n");
 	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS>\n");
