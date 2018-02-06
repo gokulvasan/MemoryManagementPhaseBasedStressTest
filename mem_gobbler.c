@@ -31,21 +31,6 @@
  * Anon and file mapped pages: Maintain 3:1 ratio
  */
 
-/*
- * TODO: 
- *	Use both the kind of anon pages.
- *	get opt
- * 		phase max time
- */
-
-/*
- *	 1. Stride : implement a 2d array.
- *	 2. Sequential : normal single dimensional array.
- *	 3. Fix : The Fix represents a single memory access element that always refer the same address.
- *	 4. Sequential Stride : 
- *	 5. Random : Combination of all the 4 in a random access pattern
-*/
-
 typedef unsigned long lt_t;
 
 #define NUMS 4096
@@ -55,7 +40,6 @@ typedef unsigned long lt_t;
 /* MAX number of pages*/ 
 #define MAX_LIMIT 100000000
 #define PAGE_SIZE 4096
-
 
 /*
  * Concatenator 
@@ -157,7 +141,9 @@ static long rand_lim(long limit)
 {
 	long divisor = RAND_MAX/(limit+1);
 	long retval;
+	unsigned int seed = (unsigned int)cputime();
 
+	srand(seed);
 	do {
 		retval = rand() / divisor;
     	} while (retval >= limit);
@@ -171,7 +157,9 @@ static lt_t rand_intr(lt_t begin, lt_t end) {
 	lt_t range = (end - begin) + 1;
 	lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
 	lt_t upper = 128;
-	
+	unsigned int seed = (unsigned int)cputime();
+
+	srand(seed);
 	/* Imagine range-sized buckets all in a row, then fire randomly towards
 	* the buckets until you land in one of them. All buckets are equally
 	* likely. If you land off the end of the line of buckets, try again. */
@@ -184,7 +172,7 @@ static lt_t rand_intr(lt_t begin, lt_t end) {
 	return (randVal % range) + begin;
 }
 
-static void touch_simple(lt_t *addr)
+static void touch_simple(char *addr)
 {
 	/* Notice the function reads and then writes*/
 	if(*addr != 0xf) {
@@ -222,7 +210,6 @@ typedef enum {
 
 typedef void (*access_pattern)(lt_t *addr, lt_t len);
 
-static access_pattern pattern[MEM_MAX];
 
 /* 
  *	For FIX to work we need a static structure
@@ -234,7 +221,7 @@ static access_pattern pattern[MEM_MAX];
  *	TODO: Make it a self balancing tree eg: AVL.
  */
 typedef struct __fix_bookeeper_node {
-	lt_t *addr;
+	char *addr;
 	lt_t loc;
 }fix_bk_node;
 
@@ -245,7 +232,7 @@ typedef struct __fix_bookeeper {
 
 fix_bookeeper *fix_head = NULL;
 
-static fix_bk_node* fix_exists(lt_t *const addr) 
+static fix_bk_node* fix_exists(char *const addr) 
 {
 	fix_bookeeper *iter = fix_head;
 
@@ -261,7 +248,7 @@ static fix_bk_node* fix_exists(lt_t *const addr)
 	return NULL;
 }
 
-static fix_bk_node* fix_alloc_node(lt_t *addr)
+static fix_bk_node* fix_alloc_node(char *addr)
 {
 	fix_bookeeper *b = malloc(sizeof(*b));
 	if(b) {
@@ -287,8 +274,9 @@ static void fix_rand_loc(fix_bk_node *node, lt_t len)
 	node->addr[node->loc] = 0x00;	/* Simple touch */	
 }
 
-static void pattern_fix(lt_t *addr, lt_t len)
+static void pattern_fix(lt_t *addr1, lt_t len)
 {
+	char *addr = (char*)addr1;
 	fix_bk_node *node;
 
 	if(!addr || !len)
@@ -326,8 +314,9 @@ static lt_t stride_get_offset(lt_t len)
 	return stride;
 }
 
-static void pattern_stride(lt_t *addr, lt_t len)
+static void pattern_stride(lt_t *addr1, lt_t len)
 {
+	char *addr = (char*)addr1;
 	lt_t stride = stride_get_offset(len);
 	lt_t i = 0;
 	///XXX: handle user defined stride pattern.
@@ -342,8 +331,9 @@ static void pattern_stride(lt_t *addr, lt_t len)
 	return;
 }
 
-static void pattern_seq(lt_t *addr, lt_t len)
+static void pattern_seq(lt_t *addr1, lt_t len)
 {
+	char *addr = (char*)addr1;
 	lt_t i = 0;
 
 	while(i < len) {
@@ -398,12 +388,13 @@ static lt_t repeat_get_count(const lt_t dist)
 	return 0;
 }
 
-static void pattern_repeat (lt_t *addr, lt_t len)
+static void pattern_repeat (lt_t *addr1, lt_t len)
 {
+	char *addr = (char*)addr1;
 	lt_t dist = repeat_get_distance(len);
 	lt_t rep_count;
 	lt_t i;
-
+	
 	for(rep_count = repeat_get_count(dist); rep_count > 0; rep_count--) {
 		i = 0;
 		while(i < dist) {
@@ -465,6 +456,14 @@ static void pattern_rand(lt_t *addr, lt_t len)
 	return;
 }
 
+static unsigned int mem_pattern = MEM_RAND;
+static access_pattern pattern[MEM_MAX] = {
+	pattern_fix,
+	pattern_stride,
+	pattern_seq,
+	pattern_repeat,
+	pattern_rand
+};
 /*=================================Access pattern Implementation: End================================= */
 
 /*
@@ -673,7 +672,7 @@ static void touch(lt_t i)
 	lt_t len;
 
 	if(curr >  0) {
-		if(i >= 0) {
+		if(i >= 0 && i < alloc_track[curr].list_count) {
 			//printf("random touch\n");
 			addr = alloc_track[curr].lst[i].addr;
 			len = alloc_track[curr].lst[i].len;
@@ -681,7 +680,7 @@ static void touch(lt_t i)
 			 * pattern changes.
 			 */
 			//printf("addr: %p len: %ld\n", addr, len);
-			pattern_rand(addr, len);
+			pattern[mem_pattern](addr, len);
 		}
 	}
 }
@@ -758,18 +757,19 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 		perror("madvise");
 		exit(1);
 	}
-
+	
 	return map;
 }
 
 lt_t* alloc(mem_type_t type, lt_t len, file_path **node)
 {
-	//printf("type: %d len: %d\n", type, len);
 	if(anon == type) {
 		*node = NULL;
 	}
 	else {
 		*node = get_file_path(len);
+		if(!*node)
+			return NULL;
 	}
 	return mmapper(( (*node) ? (*node)->path : NULL),len, type); 
 }
@@ -783,6 +783,9 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 	int alloc_suc;
 
 	addr = alloc(alloc_type, alloc_len, &node);
+	if(!addr)
+		return type_max;
+
 	alloc_suc = add_new_alloc(addr, alloc_len, alloc_type);
 
 	if(node && (alloc_suc > 0)) {
@@ -829,6 +832,10 @@ static void trans_rand_alloc()
 	while(cnt /*&& (curr_alloc < max_limit)*/) {
 		mem_type_t typ;
 		typ = random_allocator_one(anon_slice, &cnt);
+		if(typ >= type_max) {
+			cnt--;
+			continue;
+		}
 		loop_n(i); /* Small loop that touches only the last to give reality*/
 		if(typ > file) {
 			anon_slice--;
@@ -847,16 +854,17 @@ static int loop_for(double exec_time, double emergency_exit)
 
 //	printf("list count: %ld\n", i);
 	while (now + last_loop < start + exec_time) {
-		loop_start = now;
 
+		loop_start = now;
 		/* touch the index i @ curr phase */
 		if(--i > 0) {
 			touch(i-1);
 		}
 		else {
-		   i = alloc_track[curr].list_count;
+			i = alloc_track[curr].list_count;
 		}
 		tmp += loop_once();
+
 		now = cputime();
 		last_loop = now - loop_start;
 		if (emergency_exit && wctime() > emergency_exit) {
@@ -971,14 +979,14 @@ int main(int argc, char** argv)
 	start = wctime();
 
 	alloc_track_init();
-	
+
 	printf("\nFORMAT:\n");
 	printf("Metric: Pages of size 4k\n");
 	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS>\n");
 	do {
 		struct rusage res1;
+		
 		getrusage(RUSAGE_SELF, &res1);
-
 		if (verbose) {
 
 			printf("%d, %d, %.4fms, %ld, %ld, %ld, %ld, %ld, %ld, %ld\n", 
@@ -991,6 +999,7 @@ int main(int argc, char** argv)
 				res1.ru_minflt + res1.ru_majflt,
 				(res1.ru_maxrss/4));
 		}
+
 		if(max_limit < (file_cnt + anon_cnt))
 			alloc_nomore = 1;
 
