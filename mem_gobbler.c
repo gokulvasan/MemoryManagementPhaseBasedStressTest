@@ -456,7 +456,6 @@ static void pattern_rand(lt_t *addr, lt_t len)
 	return;
 }
 
-static unsigned int mem_pattern = MEM_RAND;
 static access_pattern pattern[MEM_MAX] = {
 	pattern_fix,
 	pattern_stride,
@@ -478,7 +477,7 @@ static unsigned char alloc_precision = false;
 static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
 static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */
 static lt_t speed = max; /* The value of max arrives from files.h*/
-static lt_t access_type = MEM_RAND;
+static lt_t access_type = MEM_RAND; /* Defines the memory access type */
 
 static inline void print_paths(file_lst_size_t *gpath)
 {
@@ -680,7 +679,7 @@ static void touch(lt_t i)
 			 * pattern changes.
 			 */
 			//printf("addr: %p len: %ld\n", addr, len);
-			pattern[mem_pattern](addr, len);
+			pattern[access_type](addr, len);
 		}
 	}
 }
@@ -752,12 +751,16 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 		perror("mmap");
 		exit(1);
 	}
-
+	
+	if(0x7ffeeba0d000 == map) {
+		printf("mmap is giving the address \n\n\n");
+		//exit(1);
+	}
 	if (madvise(map, size, MADV_RANDOM)) {
 		perror("madvise");
 		exit(1);
 	}
-	
+
 	return map;
 }
 
@@ -785,7 +788,7 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 	addr = alloc(alloc_type, alloc_len, &node);
 	if(!addr)
 		return type_max;
-
+	lt_sleep(1);
 	alloc_suc = add_new_alloc(addr, alloc_len, alloc_type);
 
 	if(node && (alloc_suc > 0)) {
