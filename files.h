@@ -1,7 +1,7 @@
 /* Auto Generating test files\n
-Discarding device blocks:    4096/1587200               done                            
+Discarding device blocks:    4096/1587200 528384/1587200               done                            
 Creating filesystem with 1587200 4k blocks and 397488 inodes
-Filesystem UUID: a28dd175-9581-42d9-aa69-97c3d745d978
+Filesystem UUID: ec7677c5-0b2c-4ce4-a327-96ed55c23677
 Superblock backups stored on blocks: 
 	32768, 98304, 163840, 229376, 294912, 819200, 884736
 

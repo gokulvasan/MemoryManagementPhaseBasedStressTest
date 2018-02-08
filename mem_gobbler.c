@@ -476,7 +476,7 @@ static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
 static unsigned char alloc_precision = false;
 static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
 static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */
-static lt_t speed = max; /* The value of max arrives from files.h*/
+static lt_t speed = max-1; /* The value of max arrives from files.h*/
 static lt_t access_type = MEM_RAND; /* Defines the memory access type */
 
 static inline void print_paths(file_lst_size_t *gpath)
@@ -522,7 +522,8 @@ static file_path* get_file_path(lt_t len)
 			node = find_avail_node(i);
 			if(!node)
 				continue;
-			break;
+			else
+				break;
 		}
 	}
 	return node;
@@ -631,6 +632,7 @@ static lt_t randomize_alloc_len()
 				break;
 		}
 	}
+	// printf("ANON LEN: %ld\n", file_lst[i].size);
 	return file_lst[i].size;
 }
 
@@ -722,15 +724,17 @@ static void loop_n(int n)
 lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 {
 	int fd;
-	lt_t *map;
+	lt_t *map = NULL;
 	lt_t page_cnt = BYTE_TO_PAGE(size);
-
+	//off_t pa_offset = 0 & ~(sysconf(_SC_PAGE_SIZE) - 1);
 	if(anon == type) {
-		map = mmap(NULL, size,
+		printf("ANON SIZE: %ld \n", size);
+		map = (lt_t*)mmap(NULL, size,
 			PROT_READ | PROT_WRITE, 
-			MAP_SHARED| MAP_ANONYMOUS, -1, 0);
+			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		anon_cnt += page_cnt;
 	} else if (file == type) {
+		printf("FILE SIZE: %ld \n", size);
 		if(!path) {
 			fprintf(stderr, "path is null\n");
 			exit(1);
@@ -741,26 +745,22 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 			perror("open is the error");
 			exit(1);
 		}
-		map = mmap(NULL, size,
+		map = (lt_t*)mmap(NULL, size,
 			 PROT_READ | PROT_WRITE,
 			 MAP_PRIVATE, fd, 0);
 		file_cnt += page_cnt;
 	}
 	if(MAP_FAILED == map) {
-		//printf("%s, %ld, type: %d\n",path, size, type);
+		printf("%s, %ld, type: %d\n",path, size, type);
 		perror("mmap");
 		exit(1);
 	}
-	
-	if(0x7ffeeba0d000 == map) {
-		printf("mmap is giving the address \n\n\n");
-		//exit(1);
-	}
-	if (madvise(map, size, MADV_RANDOM)) {
-		perror("madvise");
-		exit(1);
-	}
 
+	//if (madvise(map, size, MADV_RANDOM)) {
+	//	perror("madvise");
+	//	exit(1);
+	//}
+	printf("ADDR0 : %p \n", map);
 	return map;
 }
 
@@ -768,6 +768,10 @@ lt_t* alloc(mem_type_t type, lt_t len, file_path **node)
 {
 	if(anon == type) {
 		*node = NULL;
+		if(!len) {
+			fprintf(stderr, "Error in length comp:%ld\n", file_lst[0].size);
+			len =   file_lst[0].size;
+		}
 	}
 	else {
 		*node = get_file_path(len);
@@ -786,6 +790,7 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 	int alloc_suc;
 
 	addr = alloc(alloc_type, alloc_len, &node);
+	printf("ADDR1: %p\n", addr);
 	if(!addr)
 		return type_max;
 	lt_sleep(1);
