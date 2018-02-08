@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <math.h>
 #include <sys/resource.h> // needed for getrusage 
+#include <unistd.h>
 /*
  * Memory Gobbler.
  *
@@ -405,12 +406,43 @@ static void pattern_repeat (lt_t *addr1, lt_t len)
 	return;
 }
 
-static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
+
+static void random_touch_page(char *addr, lt_t len)
+{
+	#define MAX_ATT 25
+	lt_t j = MAX_ATT;
+
+	while(j) {
+		lt_t index = rand_lim(len-20);
+		pattern_seq(&addr[index], 10);
+		j--;
+	} 
+
+}
+static void random_touch(char *addr, lt_t begin, lt_t end, lt_t len)
 {
 	#define MAX_TRY 50
 	lt_t j = MAX_TRY;
-	lt_t i;
+	lt_t i = 0;
+	lt_t tmp_begin = begin;
+	lt_t intr_len = end - begin;
+	size_t page_size = sysconf(_SC_PAGE_SIZE);
+	lt_t pages = intr_len/page_size;
 
+	//printf("intr_len: %ld, so: %ld\n", intr_len, pages);
+
+	while(i < pages) {
+		lt_t loop = page_size * i;
+		lt_t start_index = begin+loop;
+		lt_t end_index = start_index+page_size;
+		
+		if(end_index >= len || end_index >= end)
+			break;
+
+		random_touch_page(&addr[start_index], page_size);
+		i++;
+	}
+/*
 	while(j) {
 		void *p = addr;
 
@@ -428,18 +460,29 @@ static void random_touch(lt_t *addr, lt_t begin, lt_t end, lt_t len)
 			((char*)p)[i] = 0x00;
 		}
 
-		begin = begin + rand_lim(30);
-		if((begin >= len) || (begin >= end))
-			break;
+		begin = rand_intr(begin, end-10);
+
+		if((begin >= len) || (begin >= end)) {
+			//Once in a while imitating seq behavior 
+			int loop = MAX_TRY;
+			begin = rand_intr(tmp_begin, end-200);
+			while(loop) {
+				touch_simple(&p[begin]);	
+				loop--;
+				begin++;
+			}
+			begin = tmp_begin;
+		}
 		j--;
 	}
+*/
 }
 
 static void random_touch_n(lt_t *addr, lt_t len)
 {
 	lt_t which_slice = 0;
 	lt_t switcher = len/2;
-	lt_t n = len/1024;
+	lt_t n = 10;
 
 	while(n) {
 		lt_t start = which_slice? switcher : 0;
@@ -642,7 +685,7 @@ static lt_t randomize_alloc_count(int precision)
 	if(precision)
 		i = rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
 	else
-		i = rand_intr(5, MAX_TRANSITION_CNT >> 4);
+		i = rand_intr(5, MAX_TRANSITION_CNT >> 3);
 
 	return i;
 }
@@ -728,19 +771,22 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 	lt_t page_cnt = BYTE_TO_PAGE(size);
 	//off_t pa_offset = 0 & ~(sysconf(_SC_PAGE_SIZE) - 1);
 	if(anon == type) {
-		printf("ANON SIZE: %ld \n", size);
+		//printf("ANON SIZE: %ld \n", size);
 		map = (lt_t*)mmap(NULL, size,
 			PROT_READ | PROT_WRITE, 
 			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		anon_cnt += page_cnt;
 	} else if (file == type) {
-		printf("FILE SIZE: %ld \n", size);
+		//printf("FILE SIZE: %ld \n", size);
 		if(!path) {
 			fprintf(stderr, "path is null\n");
 			exit(1);
 		}
 		//printf("PATH: %s\n", path);
 		fd = open(path, O_RDWR);
+		if(ftruncate(fd, size)) {
+			printf("truncate is the error\n");
+		}
 		if(-1 == fd) {
 			perror("open is the error");
 			exit(1);
@@ -760,7 +806,7 @@ lt_t* mmapper(char *path, lt_t size, mem_type_t type)
 	//	perror("madvise");
 	//	exit(1);
 	//}
-	printf("ADDR0 : %p \n", map);
+	//printf(">>>>ADDR0 : %p\n", map);
 	return map;
 }
 
@@ -775,8 +821,10 @@ lt_t* alloc(mem_type_t type, lt_t len, file_path **node)
 	}
 	else {
 		*node = get_file_path(len);
-		if(!*node)
+		if(!*node) {
+			fprintf(stderr,"path is NULL");
 			return NULL;
+		}
 	}
 	return mmapper(( (*node) ? (*node)->path : NULL),len, type); 
 }
@@ -790,7 +838,7 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 	int alloc_suc;
 
 	addr = alloc(alloc_type, alloc_len, &node);
-	printf("ADDR1: %p\n", addr);
+	//printf("ADDR1: %p\n", addr);
 	if(!addr)
 		return type_max;
 	lt_sleep(1);
