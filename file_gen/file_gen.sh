@@ -3,9 +3,10 @@
 # Generate files and corresponding structure.
 # corresponding structure needs to be redirected to files.h
 
+# Exponential file creator, Creates file in multiples of this multiplier.
 multiplier=2
 scale=1048576
-persizecount=50
+persizecount=350
 
 disksize=0
 diskpath="./test.img"
@@ -13,7 +14,6 @@ mountpath="./G"
 
 declare -a list_type=()
 j=1
-
 for Item in 'a' 'b' 'c' 'd' 'e'
 do 
        list_type+=(Item$Item)
@@ -63,17 +63,25 @@ do
        # use chown here but not needed now
        chmod 777 $mountpath"/"$size"_"$i.txt
        echo -e "\t {0, PATH($size"_"$i.txt)},"
+       sleep 1
+       sync
    done
    echo -e "\t {0, NULL},"
    echo -e "};\n"
    j=$(($j * $multiplier))
 done
 
+# making the length page aligned to avoid conflict.
+l=$(getconf PAGESIZE)
 j=1
 echo "file_lst_size_t file_lst[max] = { "
 for type in ${list_type[*]}
 do 
    k=$((4 * $j * $scale ))
+#   echo $k "and" $l
+   t=$((${k}%${l}))
+   k=$((${k} - ${t}))
+#   echo $k
    echo -e "\t {$k, file_$type},"
    j=$(($j * $multiplier))
 done
