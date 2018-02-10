@@ -82,7 +82,7 @@ do
    t=$((${k}%${l}))
    k=$((${k} - ${t}))
 #   echo $k
-   echo -e "\t {$k, file_$type},"
+   echo -e "\t {$k, file_$type, 0},"
    j=$(($j * $multiplier))
 done
 echo "};"

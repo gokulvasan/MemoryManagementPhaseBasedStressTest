@@ -1,16 +1,4 @@
 /* Auto Generating test files\n
-Discarding device blocks:     4096/11110400 5246976/11110400 7868416/11110400 9965568/1111040010489856/1111040011014144/11110400                 done                            
-Creating filesystem with 11110400 4k blocks and 2779840 inodes
-Filesystem UUID: 39583dc5-3225-4d22-bef1-872fa27fc4e5
-Superblock backups stored on blocks: 
-	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208, 
-	4096000, 7962624
-
-Allocating group tables:   0/340       done                            
-Writing inode tables:   0/340 51/340       done                            
-Creating journal (32768 blocks): done
-Writing superblocks and filesystem accounting information:   0/340       done
-
 */
 typedef enum file_len {
 	 Itema ,
@@ -1791,9 +1779,9 @@ static file_path file_Iteme[] = {
 };
 
 file_lst_size_t file_lst[max] = { 
-	 {4194304, file_Itema},
-	 {8388608, file_Itemb},
-	 {16777216, file_Itemc},
-	 {33554432, file_Itemd},
-	 {67108864, file_Iteme},
+	 {4194304, file_Itema, 0},
+	 {8388608, file_Itemb, 0},
+	 {16777216, file_Itemc, 0},
+	 {33554432, file_Itemd, 0},
+	 {67108864, file_Iteme, 0},
 };
