@@ -74,7 +74,7 @@ echo "file_lst_size_t file_lst[max] = { "
 for type in ${list_type[*]}
 do 
    k=$((4 * $j * $scale ))
-   echo -e "\t {$k, file_$type},"
+   echo -e "\t {$k, file_$type, 0},"
    j=$(($j * $multiplier))
 done
 echo "};"

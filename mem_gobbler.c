@@ -90,6 +90,7 @@ typedef struct _file_path {
 typedef struct file_lst_size {
 	lt_t size;
 	file_path *paths;
+	lt_t filled;
 } file_lst_size_t;
 
 typedef enum mem_type {
@@ -201,6 +202,9 @@ static void touch_simple(char *addr)
  *	4. REPEAT: access to a particular element at a defined interval, imitates loop.
  *	5. RANDOM/COMPLEX: Other Extreme, completly sporadic. P.S. sporadicity depends on rand and rand_intr functionality.
  */
+
+unsigned int in_transition = 0;
+
 typedef enum {
 	MEM_FIX, /* Imitates Fix memory access */
 	MEM_STRIDE, /* Imitates stride memory access */
@@ -412,6 +416,9 @@ static void random_touch_page(char *addr, lt_t len)
 {
 	#define MAX_ATT 25
 	lt_t j = MAX_ATT;
+	
+	if(in_transition)
+		j = 2;
 
 	while(j) {
 		lt_t index = rand_lim(len-20);
@@ -484,6 +491,10 @@ static void random_touch_n(lt_t *addr, lt_t len)
 	lt_t which_slice = 0;
 	lt_t switcher = len/2;
 	lt_t n = 10;
+	
+	if(in_transition) {
+		n = 3;
+	}
 
 	while(n) {
 		lt_t start = which_slice? switcher : 0;
@@ -564,8 +575,11 @@ static file_path* get_file_path(lt_t len)
 		if(file_lst[i].size >= len) {
 			//printf("Found\n");
 			node = find_avail_node(i);
-			if(!node)
+			if(!node) {
+				printf("Size: %ld is filled\n", file_lst[i].size);
+				file_lst[i].filled = 1;	
 				continue;
+			}
 			else
 				break;
 		}
@@ -886,6 +900,7 @@ static void trans_rand_alloc()
 
 	anon_slice = cnt/4;
 	//printf("anon slice %d\n", anon_slice);
+	in_transition = 1; /* FIXME: This is bad, needs a better approach to handle tranition restirtion*/
 	while(cnt /*&& (curr_alloc < max_limit)*/) {
 		mem_type_t typ;
 		typ = random_allocator_one(anon_slice, &cnt);
@@ -899,6 +914,7 @@ static void trans_rand_alloc()
 		}
 		//cnt--;
 	}
+	in_transition = 0;
 }
 
 static int loop_for(double exec_time, double emergency_exit)
@@ -946,7 +962,7 @@ static int job(double exec_time, double program_end, double length)
 			trans_rand_alloc();
 
 		i = alloc_track[curr].list_count;
-		//printf("list count per phase: %ld\n", i);
+		printf("ENTERING A PHASE: list count per phase: %ld\n", i);
 
 		chunk1 = drand48() * (exec_time - length);
 		chunk2 = exec_time - length - chunk1;
