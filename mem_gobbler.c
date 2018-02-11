@@ -1021,8 +1021,8 @@ static int job(double exec_time)
 		}
 
 		i = alloc_track[curr].list_count;
-		printf("ENTERING A PHASE: list count per phase: %ld\n", i);
-		printf(" PHASE TIME: %f %f\n", exec_time, program_end);
+		printf("ENTERING A PHASE:  %f\n", cputime());
+		printf(" PHASE list count %ld\n", i);
 		//chunk1 = drand48() % exec_time;
 		//chunk2 = exec_time - chunk1;
 
@@ -1043,6 +1043,7 @@ static int job(double exec_time)
 		if(wctime() >= program_end)
 			printf(" Overrun by: %f\n", wctime() - program_end);
 */
+		printf("EXITING A PHASE: %f\n", cputime());
 		phase_cnt++;
 		return 1;
 	}
