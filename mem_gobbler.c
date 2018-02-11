@@ -202,9 +202,28 @@ static lt_t rand_intr(lt_t begin, lt_t end) {
 	/// Return the position you hit in the bucket + begin as random number
 	return (randVal % range) + begin;
 }
+#if 1 //testing
+
+struct timespec timer_start(){
+    struct timespec start_time;
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time);
+    return start_time;
+}
+
+// call this function to end a timer, returning nanoseconds elapsed as a long
+long timer_end(struct timespec start_time){
+    struct timespec end_time;
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
+    long diffInNanos = end_time.tv_nsec - start_time.tv_nsec;
+    return diffInNanos;
+}
+
+#endif
 
 static void touch_simple(char *addr)
 {
+	//struct timespec vartime = timer_start();
+	//lt_t lapsed;		
 	/* Notice the function reads and then writes*/
 	if(*addr != 0xf) {
 		*addr = 0xf;
@@ -212,6 +231,8 @@ static void touch_simple(char *addr)
 	else {
 		*addr = 0x00;
 	}
+	//lapsed = timer_end(vartime);
+	//printf(" access time: %ld\n", lapsed);
 }
 
 /* ====================================randomizer: End======================================= */
@@ -735,7 +756,7 @@ static void touch(lt_t i)
 	char *addr;
 	lt_t len;
 
-	if(curr >  0) {
+	if(curr >=  0) {
 		if(i >= 0 && i < alloc_track[curr].list_count) {
 			//printf("random touch\n");
 			addr = alloc_track[curr].lst[i].addr;
@@ -758,6 +779,9 @@ static int num[NUMS];
 static int loop_once(double end)
 {
 	int i, j = 0;
+	if(end <= 0)
+		return j;
+
 	for (i = 0; i < NUMS; i++)
 		j += num[i]++;
 	return j;
@@ -911,7 +935,7 @@ static int trans_rand_alloc()
 	int i = rand_lim(MAX_LOOP);
 	int anon_slice;
 	int ret = 0;
-	
+	printf("+++++++++++++++++++++++TRANSITION: Start+++++++++++++++++++++++++\n");	
 	go_to_nxt_phase();
 
 	if(alloc_precision)
@@ -938,35 +962,40 @@ static int trans_rand_alloc()
 	}
 	in_transition = 0;
 
+	printf("+++++++++++++++++++++++TRANSITION: end+++++++++++++++++++++++++\n");	
 	if(ret) {
 		ret = -1;
 	}
 	return (ret);
 }
 
-static int loop_for(double exec_time, double emergency_exit)
+static int loop_for(double exec_time)
 {
 	double last_loop = 0, loop_start;
 	int tmp = 0;
-	double start = cputime();
+	double start = 0;
 	double now = cputime();
+	double run = 0;
 	lt_t i = alloc_track[curr].list_count;
-
-//	printf("list count: %ld\n", i);
-	while (now + last_loop < start + exec_time) {
-
+	
+	printf("list count: %ld\n", i);
+	while ( exec_time > (start + run) ) {
 		loop_start = now;
+		//printf(" looping\n");		
 		/* touch the index i @ curr phase */
-		if(--i > 0) {
+		if(i > 0) {
+			//printf("touch\n");
 			touch(i-1);
+			i--;
 		}
 		else {
 			i = alloc_track[curr].list_count;
 		}
-		tmp += loop_once(exec_time);
+		tmp += loop_once(exec_time - run);
 
 		now = cputime();
 		last_loop = now - loop_start;
+		run += last_loop;
 		/*if (emergency_exit && wctime() > emergency_exit) {
 			fprintf(stderr, "oops!!!: memspin/%d emergency exit!\n", getpid());
 			fprintf(stderr, "Something is seriously wrong! Do not ignore this.\n");
@@ -976,10 +1005,11 @@ static int loop_for(double exec_time, double emergency_exit)
 	return tmp;
 }
 /* Each job is a phase: transition and holding */
-static int job(double exec_time, double program_end, double length)
+static int job(double exec_time)
 {
 	double chunk1, chunk2;
-	lt_t i ;
+	lt_t i;
+	double program_end = wctime() + exec_time;
 
 	if (wctime() > program_end)
 		return 0;
@@ -989,26 +1019,30 @@ static int job(double exec_time, double program_end, double length)
 			if(trans_rand_alloc())
 				goto FAIL;
 		}
+
 		i = alloc_track[curr].list_count;
 		printf("ENTERING A PHASE: list count per phase: %ld\n", i);
+		printf(" PHASE TIME: %f %f\n", exec_time, program_end);
+		//chunk1 = drand48() % exec_time;
+		//chunk2 = exec_time - chunk1;
 
-		chunk1 = drand48() * (exec_time - length);
-		chunk2 = exec_time - length - chunk1;
-
+		//printf("%f %f\n", chunk1, chunk2);
 		/* HOLDING: Loop and touch imm allocated pages */
-		loop_for(chunk1, program_end);
+		loop_for(exec_time);
+/*
 		if(wctime() > program_end) {
 			printf("Exit before the job loop2\n");
 			return 0;
 		}
-		loop_for(length, program_end );
+		loop_for(chunk2, program_end );
 		if(wctime() > program_end) {
 			printf("Exit before the job loop3\n");
 			return 0;
 		}
 		loop_for(chunk2, program_end );
 		if(wctime() >= program_end)
-			printf(" Overrun by: %f\n", wctime() - program_end);	
+			printf(" Overrun by: %f\n", wctime() - program_end);
+*/
 		phase_cnt++;
 		return 1;
 	}
@@ -1131,8 +1165,7 @@ int main(int argc, char** argv)
 		cur_job++;
 
 		/* convert to seconds and scale */
-	} while (job(wcet_ms * 0.001 * scale, start + duration,
-		    cs_length * 0.001));
+	} while (job(wcet_ms));
 
 	return 0;
 }
