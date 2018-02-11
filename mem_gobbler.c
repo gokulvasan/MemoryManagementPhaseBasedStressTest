@@ -147,7 +147,7 @@ static unsigned char in_transition = false; /* Tells the toucher that the
 static lt_t alloc_size = 0; /*if set, value is near precise during transition */
 
 static lt_t total_alloc_pages=0;  /*Tells, how many pages the gobbler really allocated */
-
+static lt_t max_alloc_per_phase_byte = 0; /* Represent the max allocation/phase in bytes */
 
 /* ====================================randomizer: Start================================== */
 
@@ -511,7 +511,7 @@ static void random_touch_n(char *addr, lt_t len)
 	lt_t n = 10;
 	
 	if(in_transition) {
-		n = 3;
+		n = 2;
 	}
 
 	while(n) {
@@ -837,9 +837,9 @@ char* alloc(mem_type_t type, lt_t *len, file_path **node)
 {
 	if(anon == type) {
 		*node = NULL;
-		if(!len) {
+		if(!(*len)) {
 			fprintf(stderr, "Error in length comp:%ld\n", file_lst[0].size);
-			*len =   file_lst[0].size;
+			*len = file_lst[0].size;				
 		}
 	}
 	else {
@@ -849,6 +849,9 @@ char* alloc(mem_type_t type, lt_t *len, file_path **node)
 			return NULL;
 		}
 	}
+	if(max_alloc_per_phase_byte && (*len > max_alloc_per_phase_byte))
+		*len = max_alloc_per_phase_byte;
+
 	return mmapper(( (*node) ? (*node)->path : NULL),*len, type); 
 }
 
@@ -964,11 +967,11 @@ static int loop_for(double exec_time, double emergency_exit)
 
 		now = cputime();
 		last_loop = now - loop_start;
-		if (emergency_exit && wctime() > emergency_exit) {
+		/*if (emergency_exit && wctime() > emergency_exit) {
 			fprintf(stderr, "oops!!!: memspin/%d emergency exit!\n", getpid());
 			fprintf(stderr, "Something is seriously wrong! Do not ignore this.\n");
 			break;
-		}
+		} */
 	}
 	return tmp;
 }
@@ -1052,6 +1055,8 @@ int main(int argc, char** argv)
 			case 'M':
 				max_alloc_per_phase = atol(optarg);
 				alloc_precision = true;
+				max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
+				printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
 				//if(max_alloc_per_phase > MAX_TRANSITION_CNT)
 				//	max_alloc_per_phase = MAX_TRANSITION_CNT;
 			break;
