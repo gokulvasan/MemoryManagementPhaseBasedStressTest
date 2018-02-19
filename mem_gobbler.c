@@ -1139,7 +1139,7 @@ int main(int argc, char** argv)
 	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS(pages)>\n");
 	do {
 		struct rusage res1;
-		
+
 		getrusage(RUSAGE_SELF, &res1);
 		if (verbose) {
 
@@ -1159,10 +1159,9 @@ int main(int argc, char** argv)
 			printf("reached more than the max_limit(%ld): %ld", max_limit, total_alloc_pages);
 		}
 
+		cur_job++;
 		if( (max_phase <= cur_job) /*|| (alloc_nomore)*/ )
 			break;
-
-		cur_job++;
 
 		/* convert to seconds and scale */
 	} while (job(wcet_ms));
