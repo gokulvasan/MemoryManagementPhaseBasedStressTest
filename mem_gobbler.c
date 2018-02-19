@@ -241,7 +241,7 @@ static void touch_simple(char *addr)
 /*============================Access pattern Implementation: Start============================= */
 
 /* Access pattern implementation:
- * From the paper: Online memory access pattern Analysis on an
+ * From the paper: 	Online memory access pattern Analysis on an
  *			application profiling tool.
  * We can infer that there are 5 basic sequential memory access pattern:
  *	1. FIX: Fix represents a single memory access element that always refer the same address.
@@ -251,7 +251,6 @@ static void touch_simple(char *addr)
  *	4. REPEAT: access to a particular element at a defined interval, imitates loop.
  *	5. RANDOM/COMPLEX: Other Extreme, completly sporadic. P.S. sporadicity depends on rand and rand_intr functionality.
  */
-
 
 typedef void (*access_pattern)(char *addr, lt_t len);
 
