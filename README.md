@@ -41,8 +41,8 @@ USAGE:
 * redirect the output of file_gen.sh to files.h which is used by mem_gobbler.c. 
 	* Redirection command: *./file_gen/file_gen.sh > files.h*
 	* The files.h is auto generated list configured accordance to the memgobbler for stochastic access.
-* Mount the generated drive, i.e., file_gen/test.img @ /mnt/test_images to make the drive of files accessable to the tool.
-* P.S. Tool uses location /mnt/test_images to get the files for mapping.
+* Mount the generated drive, i.e., file_gen/test.img @ /media/test_images to make the drive of files accessable to the tool.
+* P.S. Tool uses location /media/test_images to get the files for mapping.
 
 **STEP 2: Building the tool**
 * Once the files.h is generated in the build directory, now we can build the memory gobbler. 
