@@ -121,7 +121,7 @@ static alloc_list_t alloc_track[MAX_ALLOC];
 #include "files.h"
 
 typedef enum {
-	MEM_FIX, /* Imitates Fix memory access */
+	MEM_FIX = 0, /* Imitates Fix memory access */
 	MEM_STRIDE, /* Imitates stride memory access */
 	MEM_SEQ, /* Imitates sequential memory access */
 	MEM_REP, /* Imitates repeat access */
@@ -138,18 +138,34 @@ typedef enum {
 /* Maximum allocation possible within a phase*/
 static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
 static unsigned char alloc_precision = false;
-static lt_t max_limit = MAX_LIMIT; /* maximum allocation in page cnt */
-static lt_t curr_alloc = 0; /* Tracking current allocatio ncount */
-static lt_t speed = max-1; /* The value of max arrives from files.h*/
-static lt_t access_type = MEM_RAND; /* Defines the memory access type */
-static unsigned char in_transition = false; /* Tells the toucher that the 
-					     * system is in transition    */
-static lt_t alloc_size = 0; /*if set, value is near precise during transition */
+static lt_t max_limit = MAX_LIMIT; 		/* maximum allocation in page cnt */
+static lt_t curr_alloc = 0; 			/* Tracking current allocatio ncount */
+static lt_t speed = max-1; 			/* The value of max arrives from files.h*/
+static lt_t access_type = MEM_RAND; 		/* Defines the memory access type */
+static unsigned char in_transition = false; 	/* Tells the toucher that the
+						 * system is in transition    */
+static lt_t alloc_size = 0; 			/*if set, value is near precise during transition */
 
-static lt_t total_alloc_pages=0;  /*Tells, how many pages the gobbler really allocated */
-static lt_t max_alloc_per_phase_byte = 0; /* Represent the max allocation/phase in bytes */
+static lt_t total_alloc_pages=0;  		/*Tells, how many pages the gobbler really allocated */
+static lt_t max_alloc_per_phase_byte = 0; 	/* Represent the max allocation/phase in bytes */
+static lt_t vector = 0;				/* Vector of locality*/
 
-/* ====================================randomizer: Start================================== */
+/* ====================================Vectorization: Start============================ */
+
+static long vector_init(char *path)
+{
+
+	return 0;
+}
+
+static long get_nxt_locality();
+{
+	return 0;
+}
+
+/* ====================================Vectorization: End==============================  */
+
+/* ====================================randomizer: Start===============================  */
 
 /* CPU time consumed so far in seconds */
 double cputime(void)
@@ -1057,7 +1073,31 @@ __attribute__((destructor)) void on_process_exit()
 	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
 }
 
-#define OPT "vp:l:e:M:s:t:A:"
+#define OPT "vp:l:e:M:s:t:A:V:h"
+
+static void usage()
+{
+	printf("memgobble\n");
+	printf("memgobble [options]\n");
+	printf("List of options:\n");
+	printf("\t-h                   : Display usage\n");
+	printf("\t-v                   : Switch verbose off\n");
+	printf("\t-p <locality count>  : Maximum locality the system will run\n");
+	printf("\t-l <upper limit>     : Set the upper bound of alloc request\n");
+	printf("\t-e <Execution time>  : Execution time of each locality in Ms\n");
+	printf("\t-M <pages>           : Maximum allocation in pages per phase\n");
+	printf("\t-s <speed>           : Speed at which memory is gobbled\n");
+	printf("\t\t speed: 0-n, Higher the value faster the memory exhaustion\n");
+	printf("\t-t <access-type>     : Access type of the locality\n");
+	printf("\t\t access-type:\n");
+	printf("\t\t\t0: Fix memory access pattern\n");
+	printf("\t\t\t1: Stride memory access pattern\n");
+	printf("\t\t\t2: Sequential memory access pattern\n");
+	printf("\t\t\t3: Repeat memory access pattern\n");
+	printf("\t\t\t4: Random memory access pattern\n");
+	printf("\t-V <File name>       : Vector of localities\n");
+}
+
 int main(int argc, char** argv)
 {
 	double wcet_ms, period_ms;
@@ -1073,7 +1113,7 @@ int main(int argc, char** argv)
 	if(argc > 1) {
 		while((c = getopt(argc, argv, OPT)) != -1) {
 			switch(c) {
-			case 'p':
+			case 'p': /* Maximum number of locality system will */
 				max_phase = atol(optarg);
 			break;
 			case 'l':
@@ -1086,7 +1126,7 @@ int main(int argc, char** argv)
 				/* Execution  Time*/
 				wcet = atol(optarg);
 			break;
-			case 'M':
+			case 'M': /* Maximum Alloc per phase */
 				max_alloc_per_phase = atol(optarg);
 				alloc_precision = true;
 				max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
@@ -1107,15 +1147,24 @@ int main(int argc, char** argv)
 					exit(1);
 				}
 			break;
-			case 'A':
+			case 'A': /* Total alloc in all phase put together*/
 				alloc_size = atol(optarg);
 				alloc_precision = true;	
 				printf("Warning: Allocate request is now precise: %ld\n", alloc_size);
 			break;
+			case 'V': /* Vector of localities */
+				vector = 1;
+				if(vector_init(optarg)) {
+					printf("Please provide valid file\n");
+				}
+			break;
+
+			case 'h':
 			default:
-				fprintf(stderr, "Error in arguments\n");
+				usage();
 				exit(1);
 			break;
+
 			}
 		}
 	}
@@ -1140,6 +1189,9 @@ int main(int argc, char** argv)
 	do {
 		struct rusage res1;
 
+		if(vector) {
+				
+		}
 		getrusage(RUSAGE_SELF, &res1);
 		if (verbose) {
 
