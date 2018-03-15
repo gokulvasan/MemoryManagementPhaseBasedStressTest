@@ -152,14 +152,28 @@ static lt_t vector = 0;				/* Vector of locality*/
 
 /* ====================================Vectorization: Start============================ */
 
-static long vector_init(char *path)
+static FILE *fd = NULL;
+
+static long locality_vector_init(char *path)
 {
+	if(!path)
+		return 1;
+	
+	printf("%s\n", path);
+
+	fd = fopen(path, "r");
+	if(!fd)
+		return 1;
 
 	return 0;
 }
 
-static long get_nxt_locality();
+/*
+	For now we will vectorize only wcet & count.
+*/
+static long locality_get_nxt( lt_t *alloc_cnt, double *wcet)
 {
+	
 	return 0;
 }
 
@@ -1154,8 +1168,9 @@ int main(int argc, char** argv)
 			break;
 			case 'V': /* Vector of localities */
 				vector = 1;
-				if(vector_init(optarg)) {
+				if(locality_vector_init(optarg)) {
 					printf("Please provide valid file\n");
+					exit(1);
 				}
 			break;
 
