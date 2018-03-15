@@ -53,9 +53,9 @@ USAGE:
 * This will produce binary *memgobble* that is ready for use.
 
 **STEP 3: Running the tool**
-*memgobble
-*memgobble [options]
-*List of options:
+* memgobble
+* memgobble [options]
+* List of options:
 *	-h                   : Display usage
 *	-v                   : Switch verbose off
 *	-p <locality count>  : Maximum locality the system will run
