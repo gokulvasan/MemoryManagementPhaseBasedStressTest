@@ -52,7 +52,7 @@ USAGE:
  	*  make
 * This will produce binary *memgobble* that is ready for use.
 
-**STEP 3: Running the tool
+**STEP 3: Running the tool**
 
 memgobble
 memgobble [options]
