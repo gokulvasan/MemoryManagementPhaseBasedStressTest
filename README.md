@@ -52,10 +52,31 @@ USAGE:
  	*  make
 * This will produce binary *memgobble* that is ready for use.
 
+**STEP 3: Running the tool
+
+memgobble
+memgobble [options]
+List of options:
+	-h                   : Display usage
+	-v                   : Switch verbose off
+	-p <locality count>  : Maximum locality the system will run
+	-l <upper limit>     : Set the upper bound of alloc request
+	-e <Execution time>  : Execution time of each locality in Ms
+	-M <pages>           : Maximum allocation in pages per phase
+	-s <speed>           : Speed at which memory is gobbled
+		 speed: 0-n, Higher the value faster the memory exhaustion
+	-t <access-type>     : Access type of the locality
+		 access-type:
+			0: Fix memory access pattern
+			1: Stride memory access pattern
+			2: Sequential memory access pattern
+			3: Repeat memory access pattern
+			4: Random memory access pattern
+	-V <File name>       : Vector of localities
+
 TODO:
 -----
 * Use Brk and Sbrk 
 * Option to tune anon and file ratio.
-
 
 **WARNING:** Memory stress tool that could slow down the system.
