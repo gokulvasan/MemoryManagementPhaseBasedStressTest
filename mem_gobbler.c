@@ -135,7 +135,7 @@ typedef enum {
  *	becomes more Deterministic.
  */
 
-/* Maximum allocation possible within a phase*/
+/* Maximum allocation possible within a phase: Randomizer*/
 static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
 static unsigned char alloc_precision = false;
 static lt_t max_limit = MAX_LIMIT; 		/* maximum allocation in page cnt */
@@ -150,9 +150,19 @@ static lt_t total_alloc_pages=0;  		/*Tells, how many pages the gobbler really a
 static lt_t max_alloc_per_phase_byte = 0; 	/* Represent the max allocation/phase in bytes */
 static lt_t vector = 0;				/* Vector of locality*/
 
+
+static void reset_max_alloc_per_phase(lt_t alloc_cnt) {
+
+	max_alloc_per_phase = alloc_cnt;
+	alloc_precision = true;
+	max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
+	printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
+}
+
+
 /* ====================================Vectorization: Start============================ */
 
-static FILE *fd = NULL;
+static FILE *vector_stream = NULL;
 
 static long locality_vector_init(char *path)
 {
@@ -161,8 +171,8 @@ static long locality_vector_init(char *path)
 	
 	printf("%s\n", path);
 
-	fd = fopen(path, "r");
-	if(!fd)
+	vector_stream = fopen(path, "r");
+	if(!vector_stream)
 		return 1;
 
 	return 0;
@@ -170,10 +180,29 @@ static long locality_vector_init(char *path)
 
 /*
 	For now we will vectorize only wcet & count.
+	getline
+	strtok
+	Format of csv: allocation_count,wcet
 */
 static long locality_get_nxt( lt_t *alloc_cnt, double *wcet)
 {
-	
+	char *line = NULL;
+        size_t len = 0;
+	ssize_t nread;
+	char *t;
+	char token[2] = ",";
+
+	if((nread = getline(&line, &len, vector_stream) != -1)) {
+
+		t = strtok(line, token);
+		*alloc_cnt = atol(t);
+		t = strtok(NULL,token);
+		*wcet = atof(t);
+		printf("Vectorization: allocation_count: %ld  Wcet: %f\n", *alloc_cnt, *wcet);
+		free(line);
+		return nread;
+	}
+
 	return 0;
 }
 
@@ -1039,7 +1068,7 @@ static int job(double exec_time)
 	double chunk1, chunk2;
 	lt_t i;
 	double program_end = wctime() + exec_time;
-
+	
 	if (wctime() > program_end)
 		return 0;
 	else {
@@ -1140,13 +1169,17 @@ int main(int argc, char** argv)
 				/* Execution  Time*/
 				wcet = atol(optarg);
 			break;
-			case 'M': /* Maximum Alloc per phase */
+			case 'M': /* Maximum Alloc per phase: randomizer */
+
+				reset_max_alloc_per_phase(atol(optarg));
+#if 0
 				max_alloc_per_phase = atol(optarg);
 				alloc_precision = true;
 				max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
 				printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
 				//if(max_alloc_per_phase > MAX_TRANSITION_CNT)
 				//	max_alloc_per_phase = MAX_TRANSITION_CNT;
+#endif
 			break;
 			case 's':
 				/* higher the speed filling is faster */
@@ -1205,7 +1238,13 @@ int main(int argc, char** argv)
 		struct rusage res1;
 
 		if(vector) {
-				
+			lt_t alloc_cnt = 0;
+			if(locality_get_nxt(&alloc_cnt, &wcet_ms)) {
+				reset_max_alloc_per_phase(alloc_cnt);
+			}
+			else {
+				break;
+			}
 		}
 		getrusage(RUSAGE_SELF, &res1);
 		if (verbose) {
