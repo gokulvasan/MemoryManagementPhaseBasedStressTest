@@ -6,8 +6,12 @@
 Author: Gokul Vasan
 
 Memory management stress test platform.
-
-RANDOM memory load generator:
+NEED:
+-----
+* Almost all of the memory management benchmarking tool never imitates a real programme behaviour.
+* This tool attempts to generate stress test on the memory mangement, but imitating program behaviour.
+* Program imitates [memory locality](https://en.wikipedia.org/wiki/Locality_of_reference "locality of reference wiki page") at varied degrees. This tool does imitate that.
+* If no option specified the tool goes rogue and imitates complete *random* behavior which might never be repeated again.
 
 **RANDOM:** The list defines what is randomized.
 
