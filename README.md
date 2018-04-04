@@ -6,6 +6,7 @@
 Author: Gokul Vasan
 
 Memory management stress test platform.
+
 NEED:
 -----
 * Almost all of the memory management benchmarking tool never imitates a real programme behaviour.
@@ -24,18 +25,21 @@ NEED:
 
 OVERVIEW:
 ---------
-* The tool is built with Autoconf, enabling auto-build systems like Open Emebedded portable.
-* Applies natural programme like behaviour, i.e. holding and transtion phases.
-* Moreover, unlike other benchmark tool, this uses combination of anon and filemap page.
+* The tool is built with Autoconf, making the tool auto-build systems like Open Emebedded friendly.
+* Generates a sequence of jobs and each job is a locality.
+* It is suffice to define Locality with just: [holding(in phase) and transtion state](http://ieeexplore.ieee.org/document/1702696/).
+* Tool uses combination of anon and filemap page.
 * Sequence of selection between anon and file is made random.
 * but, tries to maintain 3:1 ratio between file and anon respectively.
-* Touch is random, not sequential, trying to imitate programm's stochastic behavior.
+* Touch can be determined to be completly random or could be explicitly specified.
 * Applies quasi-stationary behaviour:
 	* i.e. distribution of page reference remains constant for a period of time.
 	* Period of the constant distribution time is made stochastic and unpredictable.
-* Obeys phase based beaviour, i.e. mostly tries to touch recent allocated pages, but sometimes
+* Obeys phased beaviour, i.e. mostly tries to touch recent allocated pages, but sometimes
   tries touching older phase pages.
-* Runs till SIGKILL, due to OOM Reaper or SIGSEGV, due to out of swap space.
+* Runs 2 different mode:
+	* Controlled mode : Use args to generate controlled behaviour. or
+	* Rogue mode : completly random Runs till SIGKILL due to OOM Reaper.
 
 USAGE:
 ------
@@ -46,7 +50,7 @@ USAGE:
 	* Redirection command: *./file_gen/file_gen.sh > files.h*
 	* The files.h is auto generated list configured accordance to the memgobbler for stochastic access.
 * Mount the generated drive, i.e., file_gen/test.img @ /media/test_images to make the drive of files accessable to the tool.
-* P.S. Tool uses location /media/test_images to get the files for mapping.
+* P.S. Tool hardcodes the mount location of test.img @ /media/test_images to get the files for mmap-ping.
 
 **STEP 2: Building the tool**
 * Once the files.h is generated in the build directory, now we can build the memory gobbler. 
