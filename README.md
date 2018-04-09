@@ -12,11 +12,23 @@ NEED:
 * Almost all of the memory management benchmarking tool never imitates a real programme behaviour.
 * This tool attempts to generate stress test on the memory mangement, but imitating program behaviour.
 * Every Program imitates [memory locality](https://en.wikipedia.org/wiki/Locality_of_reference "locality of reference wiki page") at varied [degrees]( https://dl.acm.org/citation.cfm?id=360227 "Characteristics of Program Localities"). This tool does imitate that.
-* If no option specified the tool goes rogue and imitates complete *random* behavior which might never be repeated again.
+* From the various studies and from the [”Principle of locality”](https://dl.acm.org/citation.cfm?id=1070856) of program’s behaviour from memory access perspective we can infer that:
+	* P1. Its the tendency of a programme to cluster the references of pages to small set of the resident pages for extended intervals.
+	* P2. There exists a strong Relation between the near future and near past cluster of reference pages, i.e., The set tends to overlap.
+	* P3. There exists a feeble or nearly no relation between distant future and distant past references of pages.
+	* P4. Pages are accessed in random exhibiting a stochastic behaviour.
+	* P5. The cluster references tends to slowly move away from one active set to another, i.e., They exhibit a quasi stationary behaviour, manifesting a quasi time series model.
+* When these inferences have to be implemented into a test programme, then the implementation needs to adhere to following properties:
+	* Allocation of pages have to be stochastic.
+	* Majority of the allocation have to happen during transitions.
+	* The program’s tendency to access the pages have to be in LRU approach, but should also stochastically access least recently or least frequently touched pages.
+	* Programme should exhibit phase behaviour, i.e., allocation should not happen continuously, but rather there should be a pausation behaviour in allocation request. This pausation should be stochastic.
+
+* Memgobbler imitates **randomness** of a program by adhering to the above rules.
 
 **RANDOM:** The list defines what is randomized.
 
-	1. selection of amount of mappings in a phase. 
+	1. selection of amount of mappings in a locality. 
 	2. selection between file and anon map.
 	3. selection of size of mapping.
 	4. Touch of a particular map.
