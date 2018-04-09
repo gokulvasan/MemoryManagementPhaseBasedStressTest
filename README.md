@@ -50,8 +50,8 @@ Overview Of Implementation:
 * Obeys phased beaviour, i.e. mostly tries to touch recent allocated pages, but sometimes
   tries touching older phase pages.
 * Runs 2 different mode:
-	* Controlled mode : Use args to generate controlled behaviour. or
-	* Rogue mode : completly random Runs till SIGKILL due to OOM Reaper.
+	* **Controlled mode** : Use args to generate controlled behaviour. or
+	* **Rogue mode** : completly random Runs till SIGKILL due to OOM Reaper.
 
 Usage:
 ------
