@@ -7,8 +7,8 @@ Author: Gokul Vasan
 
 Memory management stress test platform.
 
-NEED:
------
+Need and Philosophy:
+--------------------
 * Almost all of the memory management benchmarking tool never imitates a real programme behaviour.
 * This tool attempts to generate stress test on the memory mangement, but imitating program behaviour.
 * Every Program imitates [memory locality](https://en.wikipedia.org/wiki/Locality_of_reference "locality of reference wiki page") at varied [degrees]( https://dl.acm.org/citation.cfm?id=360227 "Characteristics of Program Localities"). This tool does imitate that.
@@ -35,8 +35,8 @@ NEED:
 	5. length of a holding time.
 	6. Amount or how many to touch. 
 
-OVERVIEW:
----------
+Overview Of Implementation:
+---------------------------
 * The tool is built with Autoconf, making the tool auto-build systems like Open Emebedded friendly.
 * Generates a sequence of jobs and each job is a locality.
 * It is suffice to define Locality with just: [holding(in phase) and transtion state](http://ieeexplore.ieee.org/document/1702696/).
@@ -53,7 +53,7 @@ OVERVIEW:
 	* Controlled mode : Use args to generate controlled behaviour. or
 	* Rogue mode : completly random Runs till SIGKILL due to OOM Reaper.
 
-USAGE:
+Usage:
 ------
 **STEP 1: Generating array of list of files for testing**
 
