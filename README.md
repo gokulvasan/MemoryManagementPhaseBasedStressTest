@@ -39,7 +39,7 @@ Overview Of Implementation:
 ---------------------------
 * The tool is built with Autoconf, making the tool auto-build systems like Open Emebedded friendly.
 * Generates a sequence of jobs and each job is a locality.
-* It is suffice to define Locality with just: [holding(in phase) and transtion state](http://ieeexplore.ieee.org/document/1702696/).
+* It is suffice to define Locality with just: [holding (in phase) and transtion state](http://ieeexplore.ieee.org/document/1702696/).
 * Tool uses combination of anon and filemap page.
 * Sequence of selection between anon and file is made random.
 * but, tries to maintain 3:1 ratio between file and anon respectively.
@@ -49,9 +49,10 @@ Overview Of Implementation:
 	* Period of the constant distribution time is made stochastic and unpredictable.
 * Obeys phased beaviour, i.e. mostly tries to touch recent allocated pages, but sometimes
   tries touching older phase pages.
-* Runs 2 different mode:
+* Runs 3 different modes:
 	* **Controlled mode** : Use args to generate controlled behaviour. or
 	* **Rogue mode** : completly random Runs till SIGKILL due to OOM Reaper.
+	* **Trace mode** : Takes a trace of IPFVT as input and imitates the same.
 
 Usage:
 ------
@@ -68,7 +69,7 @@ Usage:
 * Once the files.h is generated in the build directory, now we can build the memory gobbler. 
 * In the shell run the following in sequence:
 	*  ./autogen.sh
-	* ./configure
+	*  ./configure
  	*  make
 * This will produce binary *memgobble* that is ready for use.
 
@@ -92,6 +93,7 @@ Usage:
 		* 3: Repeat memory access pattern
 		* 4: Random memory access pattern
 * -V [File name]       : Vector of localities
+* -I [File name]       : Vector of Inter Page Fault Virtual Time (IPFVT).
 
 TODO:
 -----

@@ -138,27 +138,27 @@ typedef enum {
 /* Maximum allocation possible within a phase: Randomizer*/
 static lt_t max_alloc_per_phase = MAX_TRANSITION_CNT;
 static unsigned char alloc_precision = false;
-static lt_t max_limit = MAX_LIMIT; 		/* maximum allocation in page cnt */
+static lt_t max_limit = MAX_LIMIT; 		/* Maximum allocation in page cnt */
 static lt_t curr_alloc = 0; 			/* Tracking current allocatio ncount */
 static lt_t speed = max-1; 			/* The value of max arrives from files.h*/
 static lt_t access_type = MEM_RAND; 		/* Defines the memory access type */
 static unsigned char in_transition = false; 	/* Tells the toucher that the
-						 * system is in transition    */
-static lt_t alloc_size = 0; 			/*if set, value is near precise during transition */
+						 * System is in transition    */
+static lt_t alloc_size = 0; 			/* If set, value is near precise during transition */
 
-static lt_t total_alloc_pages=0;  		/*Tells, how many pages the gobbler really allocated */
+static lt_t total_alloc_pages=0;  		/* Tells, how many pages the gobbler really allocated */
 static lt_t max_alloc_per_phase_byte = 0; 	/* Represent the max allocation/phase in bytes */
 static lt_t vector = 0;				/* Vector of locality*/
+static lt_t ipfvt  = 0;				/* IPFVT is fed*/
 
-
-static void reset_max_alloc_per_phase(lt_t alloc_cnt) {
+static void reset_max_alloc_per_phase(lt_t alloc_cnt) 
+{
 
 	max_alloc_per_phase = alloc_cnt;
 	alloc_precision = true;
 	max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
 	printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
 }
-
 
 /* ====================================Vectorization: Start============================ */
 
@@ -168,7 +168,7 @@ static long locality_vector_init(char *path)
 {
 	if(!path)
 		return 1;
-	
+
 	printf("%s\n", path);
 
 	vector_stream = fopen(path, "r");
@@ -261,7 +261,8 @@ static lt_t rand_intr(lt_t begin, lt_t end) {
 	/// Return the position you hit in the bucket + begin as random number
 	return (randVal % range) + begin;
 }
-#if 1 //testing
+
+#if 1 //testing: START
 
 struct timespec timer_start(){
     struct timespec start_time;
@@ -277,7 +278,7 @@ long timer_end(struct timespec start_time){
     return diffInNanos;
 }
 
-#endif
+#endif //testing: END
 
 static void touch_simple(char *addr)
 {
@@ -1139,6 +1140,7 @@ static void usage()
 	printf("\t\t\t3: Repeat memory access pattern\n");
 	printf("\t\t\t4: Random memory access pattern\n");
 	printf("\t-V <File name>       : Vector of localities\n");
+	printf("\t-I <File name>       : Vector of IPFVT\n");
 }
 
 int main(int argc, char** argv)
@@ -1203,10 +1205,24 @@ int main(int argc, char** argv)
 				vector = 1;
 				if(locality_vector_init(optarg)) {
 					printf("Please provide valid file\n");
-					exit(1);
+					exit(-1);
+				}
+				else if(ipfvt) {
+					printf("option 'I' and 'V' are mutually exclusive\n");
+					exit(-1);
 				}
 			break;
-
+			case 'I': /* Vector of IPFVT */
+				ipfvt = 1;
+				if(locality_vector_init(optarg)) {
+					printf("Please provide valid file\n");
+					exit(-1);
+				}
+				else if(vector) {
+					printf("option 'I' and 'V' are mutually exclusive\n");
+					exit(-1);
+				}
+			break;
 			case 'h':
 			default:
 				usage();
