@@ -148,8 +148,8 @@ static lt_t alloc_size = 0; 			/* If set, value is near precise during transitio
 
 static lt_t total_alloc_pages=0;  		/* Tells, how many pages the gobbler really allocated */
 static lt_t max_alloc_per_phase_byte = 0; 	/* Represent the max allocation/phase in bytes */
-static lt_t vector = 0;				/* Vector of locality*/
-static lt_t ipfvt  = 0;				/* IPFVT is fed*/
+static lt_t vector = 0;				/* Vector of files*/
+static lt_t ipfvt  = 0;				/* if(ipfvt){ then the file is series of IPFVT }*/
 
 static void reset_max_alloc_per_phase(lt_t alloc_cnt) 
 {
@@ -158,6 +158,42 @@ static void reset_max_alloc_per_phase(lt_t alloc_cnt)
 	alloc_precision = true;
 	max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
 	printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
+}
+
+/*
+	For now we will vectorize only wcet & count.
+	getline
+	strtok
+	Format of csv: PHASE == <allocation_count,wcet>
+		       IPFVT == <index_count"\t"IPFVT>
+*/
+static long get_nxt_alloc( lt_t *alloc_cnt, double *wcet, lt_t is_ipfvt )
+{
+#define PHASE_DELIMITER ","
+#define IPFVT_DELIMITER "\t"
+
+	char *line = NULL;
+        size_t len = 0;
+	ssize_t nread;
+	char *t;
+	char token[2] = is_ipfvt ?  IPFVT_DELIMITER : PHASE_DELIMITER;
+
+	if((nread = getline(&line, &len, vector_stream) != -1)) {
+
+		t = strtok(line, token);
+		if(is_ipfvt) {
+			*alloc_cnt = 1;
+		} else {
+			*alloc_cnt = atol(t);
+		}
+		t = strtok(NULL,token);
+		*wcet = atof(t);
+		printf("Vectorization: allocation_count: %ld  Wcet: %f\n", *alloc_cnt, *wcet);
+		free(line);
+
+		return nread;
+	}
+	return 0;
 }
 
 /* ====================================Vectorization: Start============================ */
@@ -174,34 +210,6 @@ static long locality_vector_init(char *path)
 	vector_stream = fopen(path, "r");
 	if(!vector_stream)
 		return 1;
-
-	return 0;
-}
-
-/*
-	For now we will vectorize only wcet & count.
-	getline
-	strtok
-	Format of csv: allocation_count,wcet
-*/
-static long locality_get_nxt( lt_t *alloc_cnt, double *wcet)
-{
-	char *line = NULL;
-        size_t len = 0;
-	ssize_t nread;
-	char *t;
-	char token[2] = ",";
-
-	if((nread = getline(&line, &len, vector_stream) != -1)) {
-
-		t = strtok(line, token);
-		*alloc_cnt = atol(t);
-		t = strtok(NULL,token);
-		*wcet = atof(t);
-		printf("Vectorization: allocation_count: %ld  Wcet: %f\n", *alloc_cnt, *wcet);
-		free(line);
-		return nread;
-	}
 
 	return 0;
 }
@@ -1040,7 +1048,7 @@ static int loop_for(double exec_time)
 	printf("list count: %ld\n", i);
 	while ( exec_time > (start + run) ) {
 		loop_start = now;
-		//printf(" looping\n");		
+		
 		/* touch the index i @ curr phase */
 		if(i > 0) {
 			//printf("touch\n");
@@ -1078,31 +1086,8 @@ static int job(double exec_time)
 			if(trans_rand_alloc())
 				goto FAIL;
 		}
-
 		i = alloc_track[curr].list_count;
-		printf("ENTERING A PHASE:  %f\n", cputime());
-		printf(" PHASE list count %ld\n", i);
-		//chunk1 = drand48() % exec_time;
-		//chunk2 = exec_time - chunk1;
-
-		//printf("%f %f\n", chunk1, chunk2);
-		/* HOLDING: Loop and touch imm allocated pages */
 		loop_for(exec_time);
-/*
-		if(wctime() > program_end) {
-			printf("Exit before the job loop2\n");
-			return 0;
-		}
-		loop_for(chunk2, program_end );
-		if(wctime() > program_end) {
-			printf("Exit before the job loop3\n");
-			return 0;
-		}
-		loop_for(chunk2, program_end );
-		if(wctime() >= program_end)
-			printf(" Overrun by: %f\n", wctime() - program_end);
-*/
-		printf("EXITING A PHASE: %f\n", cputime());
 		phase_cnt++;
 		return 1;
 	}
@@ -1117,7 +1102,7 @@ __attribute__((destructor)) void on_process_exit()
 	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
 }
 
-#define OPT "vp:l:e:M:s:t:A:V:h"
+#define OPT "Ivp:l:e:M:s:t:A:V:h"
 
 static void usage()
 {
@@ -1140,7 +1125,7 @@ static void usage()
 	printf("\t\t\t3: Repeat memory access pattern\n");
 	printf("\t\t\t4: Random memory access pattern\n");
 	printf("\t-V <File name>       : Vector of localities\n");
-	printf("\t-I <File name>       : Vector of IPFVT\n");
+	printf("\t-I   		       : Vector is IPFVT\n");
 }
 
 int main(int argc, char** argv)
@@ -1207,21 +1192,9 @@ int main(int argc, char** argv)
 					printf("Please provide valid file\n");
 					exit(-1);
 				}
-				else if(ipfvt) {
-					printf("option 'I' and 'V' are mutually exclusive\n");
-					exit(-1);
-				}
 			break;
-			case 'I': /* Vector of IPFVT */
+			case 'I': /* Vector is IPFVT */
 				ipfvt = 1;
-				if(locality_vector_init(optarg)) {
-					printf("Please provide valid file\n");
-					exit(-1);
-				}
-				else if(vector) {
-					printf("option 'I' and 'V' are mutually exclusive\n");
-					exit(-1);
-				}
 			break;
 			case 'h':
 			default:
@@ -1255,7 +1228,7 @@ int main(int argc, char** argv)
 
 		if(vector) {
 			lt_t alloc_cnt = 0;
-			if(locality_get_nxt(&alloc_cnt, &wcet_ms)) {
+			if(get_nxt_alloc(&alloc_cnt, &wcet_ms, type)) {
 				reset_max_alloc_per_phase(alloc_cnt);
 			}
 			else {
