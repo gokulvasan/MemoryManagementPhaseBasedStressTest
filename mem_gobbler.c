@@ -76,11 +76,12 @@ static lt_t file_cnt = 0;
 static lt_t phase_cnt = 0;
 static lt_t alloc_nomore = 0;
 struct rusage res;
+
 /*
  * Basically tries to maintain
  * array of list of paths and its
  * access.
- *
+ * The array itself is fed by files.h
  */
 typedef struct _file_path {
 	int alloc;
@@ -120,6 +121,7 @@ static alloc_list_t alloc_track[MAX_ALLOC];
  */
 #include "files.h"
 
+/* Memory Access Pattern Types Implemented */
 typedef enum {
 	MEM_FIX = 0, /* Imitates Fix memory access */
 	MEM_STRIDE, /* Imitates stride memory access */
@@ -128,7 +130,6 @@ typedef enum {
 	MEM_RAND, /* Imitates extreme pattern of random memory access */
 	MEM_MAX
 }mem_pattern_types;
-
 /*
  * TUNING THE LIMITS:
  *	More precise the parameters becomes system 
@@ -150,6 +151,7 @@ static lt_t total_alloc_pages=0;  		/* Tells, how many pages the gobbler really 
 static lt_t max_alloc_per_phase_byte = 0; 	/* Represent the max allocation/phase in bytes */
 static lt_t vector = 0;				/* Vector of files*/
 static lt_t ipfvt  = 0;				/* if(ipfvt){ then the file is series of IPFVT }*/
+static lt_t time_g = 0;				/* Decision on Time Granularity */
 
 static void reset_max_alloc_per_phase(lt_t alloc_cnt) 
 {
@@ -157,8 +159,13 @@ static void reset_max_alloc_per_phase(lt_t alloc_cnt)
 	max_alloc_per_phase = alloc_cnt;
 	alloc_precision = true;
 	max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
-	printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
+	//printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
 }
+
+
+/* ====================================Vectorization: Start============================ */
+
+static FILE *vector_stream = NULL;
 
 /*
 	For now we will vectorize only wcet & count.
@@ -176,29 +183,24 @@ static long get_nxt_alloc( lt_t *alloc_cnt, double *wcet, lt_t is_ipfvt )
         size_t len = 0;
 	ssize_t nread;
 	char *t;
-	char token[2] = is_ipfvt ?  IPFVT_DELIMITER : PHASE_DELIMITER;
 
 	if((nread = getline(&line, &len, vector_stream) != -1)) {
 
-		t = strtok(line, token);
+		t = strtok(line, is_ipfvt ?  IPFVT_DELIMITER : PHASE_DELIMITER);
 		if(is_ipfvt) {
 			*alloc_cnt = 1;
 		} else {
 			*alloc_cnt = atol(t);
 		}
-		t = strtok(NULL,token);
+		t = strtok(NULL, is_ipfvt ?  IPFVT_DELIMITER : PHASE_DELIMITER);
 		*wcet = atof(t);
-		printf("Vectorization: allocation_count: %ld  Wcet: %f\n", *alloc_cnt, *wcet);
+		printf("Vectorization: allocation_count: %ld  Wcet: %fms\n", *alloc_cnt, *wcet);
 		free(line);
 
 		return nread;
 	}
 	return 0;
 }
-
-/* ====================================Vectorization: Start============================ */
-
-static FILE *vector_stream = NULL;
 
 static long locality_vector_init(char *path)
 {
@@ -216,58 +218,63 @@ static long locality_vector_init(char *path)
 
 /* ====================================Vectorization: End==============================  */
 
-/* ====================================randomizer: Start===============================  */
 
-/* CPU time consumed so far in seconds */
-double cputime(void)
+/* ====================================Time Management: Start==========================  */
+
+/*  
+ *  Clock Granularity
+ */
+typedef enum {
+	T_SECS = 0, 	/* Time Granularity in Seconds */
+	T_milliSECS,    /* Time Granularity in milliSeconds */	
+	T_microSECS,	/* Time Granularity in microSeconds */
+	T_nanoSECS,	/* Time Granularity in nanoSeconds */
+	T_END
+}time_granularity;
+
+typedef struct _conv {
+	lt_t secs;
+	lt_t microsecs;
+	lt_t nanosecs;
+}conv;
+
+static conv converter[T_END] = {
+			{1, 1E-6, 1E-9},
+			{1E3, 1E-3, 1E-6},
+			{1E6, 1, 1E-3},
+			{1E9, 1E3, 1}
+			};
+
+int lt_sleep(lt_t timeout)
+{
+	struct timespec delay;
+
+	delay.tv_sec  = timeout / 1000000000L;
+	delay.tv_nsec = timeout % 1000000000L;
+	return nanosleep(&delay, NULL);
+}
+
+/* wall-clock time in xxxseconds, where xxx == ms | micro | none*/
+double wctime(time_granularity t)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	return ((tv.tv_sec * converter[t].secs) + 
+		(tv.tv_usec * converter[t].microsecs));
+}
+
+/* CPU time consumed so far in milliseconds */
+double cputime(time_granularity t)
 {
 	struct timespec ts;
 	int err;
 	err = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
 	if (err != 0)
 		perror("clock_gettime");
-	return (ts.tv_sec + 1E-9 * ts.tv_nsec);
-}
 
-/* 
- * A module that randomizes a number within given range
- *	range: 0 - limit ( excluded )
- *
- * Taken from: stack overflow.
- */
-static long rand_lim(long limit) 
-{
-	long divisor = RAND_MAX/(limit+1);
-	long retval;
-	unsigned int seed = (unsigned int)cputime();
-
-	srand(seed);
-	do {
-		retval = rand() / divisor;
-    	} while (retval >= limit);
-
-	return retval;
-}
-
-/// Begin and end are *inclusive*; => [begin, end]
-static lt_t rand_intr(lt_t begin, lt_t end) {
-
-	lt_t range = (end - begin) + 1;
-	lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
-	lt_t upper = 128;
-	unsigned int seed = (unsigned int)cputime();
-
-	srand(seed);
-	/* Imagine range-sized buckets all in a row, then fire randomly towards
-	* the buckets until you land in one of them. All buckets are equally
-	* likely. If you land off the end of the line of buckets, try again. */
-	lt_t randVal = rand();
-	while ((randVal >= limit) && upper) { 
-		randVal = rand();
-		upper--;
-	}
-	/// Return the position you hit in the bucket + begin as random number
-	return (randVal % range) + begin;
+	return ((ts.tv_sec * converter[t].secs) + 
+		(ts.tv_nsec * converter[t].nanosecs));
 }
 
 #if 1 //testing: START
@@ -288,6 +295,51 @@ long timer_end(struct timespec start_time){
 
 #endif //testing: END
 
+/* ====================================Time Management: Start=========================  */
+
+
+
+/* ====================================randomizer: Start===============================  */
+/* 
+ * A module that randomizes a number within given range
+ *	range: 0 - limit ( excluded )
+ *
+ * Taken from: stack overflow.
+ */
+static long rand_lim(long limit) 
+{
+	long divisor = RAND_MAX/(limit+1);
+	long retval;
+	unsigned int seed = (unsigned int)cputime(T_SECS);
+
+	srand(seed);
+	do {
+		retval = rand() / divisor;
+    	} while (retval >= limit);
+
+	return retval;
+}
+
+/// Begin and end are *inclusive*; => [begin, end]
+static lt_t rand_intr(lt_t begin, lt_t end) {
+
+	lt_t range = (end - begin) + 1;
+	lt_t limit = (RAND_MAX) - ((RAND_MAX) % range);
+	lt_t upper = 128;
+	unsigned int seed = (unsigned int)cputime(T_SECS);
+
+	srand(seed);
+	/* Imagine range-sized buckets all in a row, then fire randomly towards
+	* the buckets until you land in one of them. All buckets are equally
+	* likely. If you land off the end of the line of buckets, try again. */
+	lt_t randVal = rand();
+	while ((randVal >= limit) && upper) { 
+		randVal = rand();
+		upper--;
+	}
+	/// Return the position you hit in the bucket + begin as random number
+	return (randVal % range) + begin;
+}
 static void touch_simple(char *addr)
 {
 	//struct timespec vartime = timer_start();
@@ -408,7 +460,6 @@ fin:
 	return;
 }
 
-
 static lt_t stride_get_offset(lt_t len)
 {
 
@@ -506,7 +557,7 @@ static void pattern_repeat (char *addr1, lt_t len)
 	lt_t dist = repeat_get_distance(len);
 	lt_t rep_count;
 	lt_t i;
-	
+
 	for(rep_count = repeat_get_count(dist); rep_count > 0; rep_count--) {
 		i = 0;
 		while(i < dist) {
@@ -517,12 +568,11 @@ static void pattern_repeat (char *addr1, lt_t len)
 	return;
 }
 
-
 static void random_touch_page(char *addr, lt_t len)
 {
 	#define MAX_ATT 25
 	lt_t j = MAX_ATT;
-	
+
 	if(in_transition)
 		j = 2;
 
@@ -531,8 +581,8 @@ static void random_touch_page(char *addr, lt_t len)
 		pattern_seq(&addr[index], 10);
 		j--;
 	} 
-
 }
+
 static void random_touch(char *addr, lt_t begin, lt_t end, lt_t len)
 {
 	#define MAX_TRY 50
@@ -624,7 +674,9 @@ static access_pattern pattern[MEM_MAX] = {
 	pattern_repeat,
 	pattern_rand
 };
+
 /*=================================Access pattern Implementation: End================================= */
+
 static inline void print_paths(file_lst_size_t *gpath)
 {
 	file_path *path = gpath[0].paths;
@@ -644,7 +696,6 @@ static file_path *find_avail_node(int i)
 			//printf("found a vaild file: %s\n", node->path);
 			break;
 		}
-		//printf("not finding the val\n");
 		node++;
 	}
 
@@ -664,10 +715,9 @@ static file_path* get_file_path(lt_t *len)
 	for(i = 0; i<max; i++) {
 		//printf("Asked length is : %ld : %ld\n", len, file_lst[i].size);
 		if(file_lst[i].size >= *len) {
-			//printf("Found\n");
 			node = find_avail_node(i);
 			if(!node) {
-				printf("Size: %ld is filled\n", file_lst[i].size);
+				printf("Warning: Size: %ld is filled\n", file_lst[i].size);
 				file_lst[i].filled = 1;	
 				continue;
 			}
@@ -791,29 +841,12 @@ static lt_t randomize_alloc_count(int precision)
 {
 	lt_t i = 0;
 	if(precision)
-		i = rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
+		i = max_alloc_per_phase; //rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
 	else
 		i = rand_intr(5, MAX_TRANSITION_CNT >> 3);
 
 	return i;
 }
-/* wall-clock time in seconds */
-double wctime(void)
-{
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return (tv.tv_sec + 1E-6 * tv.tv_usec);
-}
-
-int lt_sleep(lt_t timeout)
-{
-	struct timespec delay;
-
-	delay.tv_sec  = timeout / 1000000000L;
-	delay.tv_nsec = timeout % 1000000000L;
-	return nanosleep(&delay, NULL);
-}
-
 /*
  * This is the primary holding state of a phase.
  * Within the holding phase, the system generates pattern.
@@ -836,7 +869,6 @@ static void touch(lt_t i)
 		}
 	}
 }
-
 
 /* 
  * Simple loop not touching any pages of the memory.
@@ -920,7 +952,6 @@ char* mmapper(char *path, lt_t size, mem_type_t type)
 		exit(1);
 	}
 
-	//printf(">>>>ADDR0 : %p\n", map);
 	return map;
 }
 
@@ -954,7 +985,7 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 	file_path *node = NULL;
 	int alloc_suc;
 	lt_t page_cnt = 0;
-	
+
 	addr = alloc(alloc_type, &alloc_len, &node);
 	//printf("ADDR1: %p\n", addr);
 	if(!addr)
@@ -1002,7 +1033,7 @@ static int trans_rand_alloc()
 	int i = rand_lim(MAX_LOOP);
 	int anon_slice;
 	int ret = 0;
-	printf("+++++++++++++++++++++++TRANSITION: Start+++++++++++++++++++++++++\n");	
+	
 	go_to_nxt_phase();
 
 	if(alloc_precision)
@@ -1029,29 +1060,28 @@ static int trans_rand_alloc()
 	}
 	in_transition = 0;
 
-	printf("+++++++++++++++++++++++TRANSITION: end+++++++++++++++++++++++++\n");	
 	if(ret) {
 		ret = -1;
 	}
 	return (ret);
 }
 
-static int loop_for(double exec_time)
+static int loop_for(double exec_time, time_granularity t)
 {
 	double last_loop = 0, loop_start;
 	int tmp = 0;
 	double start = 0;
-	double now = cputime();
+	double now = cputime(t);
 	double run = 0;
 	lt_t i = alloc_track[curr].list_count;
 	
-	printf("list count: %ld\n", i);
+	//printf("list count: %ld\n", i);
 	while ( exec_time > (start + run) ) {
+		//printf("loop_for %f\n",start + run);
 		loop_start = now;
-		
+
 		/* touch the index i @ curr phase */
 		if(i > 0) {
-			//printf("touch\n");
 			touch(i-1);
 			i--;
 		}
@@ -1060,7 +1090,7 @@ static int loop_for(double exec_time)
 		}
 		tmp += loop_once(exec_time - run);
 
-		now = cputime();
+		now = cputime(t);
 		last_loop = now - loop_start;
 		run += last_loop;
 		/*if (emergency_exit && wctime() > emergency_exit) {
@@ -1072,13 +1102,13 @@ static int loop_for(double exec_time)
 	return tmp;
 }
 /* Each job is a phase: transition and holding */
-static int job(double exec_time)
+static int job(double exec_time, time_granularity t)
 {
 	double chunk1, chunk2;
 	lt_t i;
-	double program_end = wctime() + exec_time;
-	
-	if (wctime() > program_end)
+	double program_end = wctime(t) + exec_time;
+
+	if (wctime(t) > program_end)
 		return 0;
 	else {
 		/* TRANSITION: Randomize and touch allocations */
@@ -1087,7 +1117,7 @@ static int job(double exec_time)
 				goto FAIL;
 		}
 		i = alloc_track[curr].list_count;
-		loop_for(exec_time);
+		loop_for(exec_time, t);
 		phase_cnt++;
 		return 1;
 	}
@@ -1157,16 +1187,7 @@ int main(int argc, char** argv)
 				wcet = atol(optarg);
 			break;
 			case 'M': /* Maximum Alloc per phase: randomizer */
-
 				reset_max_alloc_per_phase(atol(optarg));
-#if 0
-				max_alloc_per_phase = atol(optarg);
-				alloc_precision = true;
-				max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
-				printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
-				//if(max_alloc_per_phase > MAX_TRANSITION_CNT)
-				//	max_alloc_per_phase = MAX_TRANSITION_CNT;
-#endif
 			break;
 			case 's':
 				/* higher the speed filling is faster */
@@ -1195,6 +1216,7 @@ int main(int argc, char** argv)
 			break;
 			case 'I': /* Vector is IPFVT */
 				ipfvt = 1;
+				time_g = T_nanoSECS; 
 			break;
 			case 'h':
 			default:
@@ -1216,7 +1238,7 @@ int main(int argc, char** argv)
 	period_ms = 50 * wcet_ms;
 	duration = wcet_ms;
 
-	start = wctime();
+	start = wctime(time_g);
 
 	alloc_track_init();
 
@@ -1228,7 +1250,7 @@ int main(int argc, char** argv)
 
 		if(vector) {
 			lt_t alloc_cnt = 0;
-			if(get_nxt_alloc(&alloc_cnt, &wcet_ms, type)) {
+			if(get_nxt_alloc(&alloc_cnt, &wcet_ms, ipfvt)) {
 				reset_max_alloc_per_phase(alloc_cnt);
 			}
 			else {
@@ -1241,7 +1263,7 @@ int main(int argc, char** argv)
 			printf("%d, %d, %.4fms, %ld, %ld, %ld, %ld, %ld, %ld, %ld\n", 
 				getpid(),
 				cur_job,
-				(wctime() - start) * 1000,
+				(wctime(time_g) - start),
 				file_cnt, anon_cnt,
 				file_cnt + anon_cnt,
 				res1.ru_minflt, res1.ru_majflt,
@@ -1259,7 +1281,7 @@ int main(int argc, char** argv)
 			break;
 
 		/* convert to seconds and scale */
-	} while (job(wcet_ms));
+	} while (job(wcet_ms, time_g));
 
 	return 0;
 }
