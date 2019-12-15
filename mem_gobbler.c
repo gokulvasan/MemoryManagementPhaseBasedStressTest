@@ -36,7 +36,7 @@
 typedef unsigned long lt_t;
 
 #define NUMS 4096
-#define MAX_ALLOC (4096)
+#define MAX_ALLOC (700000)
 #define ms2ns(ms) ((ms)*1000000LL)
 
 /* MAX number of pages*/ 
@@ -52,10 +52,28 @@ typedef unsigned long lt_t;
 #endif
 
 #ifdef DEBUG
-#define FS "/media/test_files/"
+#define FS "/media/test_images/"
 #else
 #define FS "/media/test_images/"
 #endif
+
+#ifdef DEBUG
+#define PR_DEBUG(fmt, ...)					\
+       do {							\
+		printf(fmt, ##__VA_ARGS__);			\
+	} while(0)
+#else
+
+#define PR_DEBUG(fmt, ...) 
+
+#endif
+
+#define PR_ERROR(fmt, ...)					\
+       do {							\
+		printf(fmt, ##__VA_ARGS__);			\
+	        exit(-1);					\
+	} while(0)
+
 
 #define PATH(name) FS # name
 
@@ -109,12 +127,22 @@ typedef struct alloc_list_per_se {
 /* Per phase allocation list */
 typedef struct alloc_list {
 	lt_t list_count;
-	alloc_list_per_se_t lst[MAX_ALLOC];
+#define MAX_ALLOC_PER_SE (500)
+	alloc_list_per_se_t lst[MAX_ALLOC_PER_SE];
 }alloc_list_t;
 
 /* List of phases */
 signed long curr = -1; /*current phase index*/
-static alloc_list_t alloc_track[MAX_ALLOC];
+static alloc_list_t *alloc_track;
+
+#define ALLOC_INIT() do {							\
+		alloc_track = malloc(sizeof(*alloc_track) * MAX_ALLOC);		\
+		if(!alloc_track) {						\
+			fprintf(stderr, "Malloc Failure for alloc_track\n");	\
+			exit(-1);						\
+		}								\
+	} while(0)
+
 /* 
  * A set of data structures closely related to the  
  * automatic file generator.
@@ -155,13 +183,10 @@ static lt_t time_g = 0;				/* Decision on Time Granularity */
 
 static void reset_max_alloc_per_phase(lt_t alloc_cnt) 
 {
-
 	max_alloc_per_phase = alloc_cnt;
 	alloc_precision = true;
 	max_alloc_per_phase_byte = max_alloc_per_phase * PAGE_SIZE;
-	//printf("max alloc per phase: %ld:\n", max_alloc_per_phase_byte);
 }
-
 
 /* ====================================Vectorization: Start============================ */
 
@@ -194,7 +219,8 @@ static long get_nxt_alloc( lt_t *alloc_cnt, double *wcet, lt_t is_ipfvt )
 		}
 		t = strtok(NULL, is_ipfvt ?  IPFVT_DELIMITER : PHASE_DELIMITER);
 		*wcet = atof(t);
-		printf("Vectorization: allocation_count: %ld  Wcet: %fms\n", *alloc_cnt, *wcet);
+
+		PR_DEBUG("Vectorization: allocation_count: %ld  Wcet: %fms\n", *alloc_cnt, *wcet);
 		free(line);
 
 		return nread;
@@ -231,6 +257,10 @@ typedef enum {
 	T_nanoSECS,	/* Time Granularity in nanoSeconds */
 	T_END
 }time_granularity;
+
+#define TIME_TO_STRING(x) ( (T_SECS == (x))? "s" : 		\
+			((T_milliSECS == (x)) ? "ms" : 		\
+		 	((T_microSECS == (x)) ? "us" : "ns")))
 
 typedef struct _conv {
 	lt_t secs;
@@ -500,6 +530,7 @@ static void pattern_seq(char *addr1, lt_t len)
 	lt_t i = 0;
 
 	while(i < len) {
+		PR_DEBUG("\t\t %s\n", __func__);
 		touch_simple(&addr[i]);
 		i++;
 	}
@@ -570,7 +601,7 @@ static void pattern_repeat (char *addr1, lt_t len)
 
 static void random_touch_page(char *addr, lt_t len)
 {
-	#define MAX_ATT 25
+	#define MAX_ATT 50
 	lt_t j = MAX_ATT;
 
 	if(in_transition)
@@ -579,67 +610,38 @@ static void random_touch_page(char *addr, lt_t len)
 	while(j) {
 		lt_t index = rand_lim(len-20);
 		pattern_seq(&addr[index], 10);
+		PR_DEBUG("\t There is a touch\n");
 		j--;
 	} 
 }
 
 static void random_touch(char *addr, lt_t begin, lt_t end, lt_t len)
 {
-	#define MAX_TRY 50
-	lt_t j = MAX_TRY;
 	lt_t i = 0;
 	lt_t tmp_begin = begin;
 	lt_t intr_len = end - begin;
 	size_t page_size = sysconf(_SC_PAGE_SIZE);
 	lt_t pages = intr_len/page_size;
 
-	//printf("intr_len: %ld, so: %ld\n", intr_len, pages);
+	if(!intr_len) {
+		PR_ERROR("Interval len is zero\n");
+	}
+	pages = pages ? pages : 1;
 
 	while(i < pages) {
-		lt_t loop = page_size * i;
-		lt_t start_index = begin+loop;
-		lt_t end_index = start_index+page_size;
+		//FIXME: There is a bug here.
+		lt_t loop 	 = (pages > 1) ? page_size * i : 0;
+		lt_t start_index = begin + loop;
+		lt_t end_index 	 = (pages > 1) ? (page_size + start_index) : (end-500);
 
-		if(end_index >= len || end_index >= end)
+		PR_DEBUG("%s: Start: %ld end: %ld\n", __func__, start_index, end_index);
+		if(end_index >= end) {
+			PR_DEBUG("random_touch is breaking\n");
 			break;
-
-		random_touch_page(&addr[start_index], page_size);
+		}
+		random_touch_page(&addr[start_index], end_index);
 		i++;
 	}
-/*
-	while(j) {
-		void *p = addr;
-
-		i = rand_intr(begin, end-10);
-		//i = i - begin;
-
-		if(i >= len)
-			continue;
-
-		if(((char*)p)[i] != 0xf) {
-			((char*)p)[i] = 0xf;
-			break;
-		}
-		else {
-			((char*)p)[i] = 0x00;
-		}
-
-		begin = rand_intr(begin, end-10);
-
-		if((begin >= len) || (begin >= end)) {
-			//Once in a while imitating seq behavior 
-			int loop = MAX_TRY;
-			begin = rand_intr(tmp_begin, end-200);
-			while(loop) {
-				touch_simple(&p[begin]);	
-				loop--;
-				begin++;
-			}
-			begin = tmp_begin;
-		}
-		j--;
-	}
-*/
 }
 
 static void random_touch_n(char *addr, lt_t len)
@@ -693,14 +695,13 @@ static file_path *find_avail_node(int i)
 
 	while(node->path) {
 		if(!node->alloc) {
-			//printf("found a vaild file: %s\n", node->path);
 			break;
 		}
 		node++;
 	}
 
 	if(!node->path) {
-		//printf("node->path is NULL\n");
+		fprintf(stderr, "node->path is NULL\n");
 		return NULL;
 	}
 	return node;
@@ -741,7 +742,7 @@ static file_path* get_file_path(lt_t *len)
 static void go_to_nxt_phase()
 {
 	if(curr >= MAX_ALLOC) {
-		printf("reached maximum phase transitions\n");
+		fprintf(stderr, "reached maximum phase transitions\n");
 		exit(1);
 		return;
 	}
@@ -750,7 +751,10 @@ static void go_to_nxt_phase()
 
 static void alloc_track_init()
 {
-	memset(&alloc_track, 0x00, sizeof(alloc_track));
+	if(!alloc_track) {
+		ALLOC_INIT();
+	}
+	memset(alloc_track, 0x00, sizeof(*alloc_track) * MAX_ALLOC);
 }
 
 static int add_new_alloc(char *address, long len, mem_type_t type)
@@ -758,13 +762,14 @@ static int add_new_alloc(char *address, long len, mem_type_t type)
 	lt_t i = alloc_track[curr].list_count;
 
 	if(i >= MAX_ALLOC) {
-		//printf("Curr: %ld MAX alloc : %ld\n", curr, i);
+		fprintf(stderr, "Curr: %ld MAX alloc : %ld\n", curr, i);
 		return -1;
 	}
 	alloc_track[curr].lst[i].addr = address;
 	alloc_track[curr].lst[i].len = len;
 	alloc_track[curr].lst[i].type = type;
 	alloc_track[curr].list_count++;
+	PR_DEBUG("New Alloc at addr:%p Len:%ld Type:%d\n", address, len, type);
 	return 1;
 }
 
@@ -808,11 +813,29 @@ static int del_alloc(long  phase, lt_t *address)
 	Slice defines that ratio: if anon_slice is 0 then only possibility
 	is file.
 */
-static int randomize_alloc_type(int anon_slice)
+#define FILE_RATIO 4
+
+static mem_type_t randomize_alloc_type(int anon_slice)
 {
-	if(anon_slice)
-		return rand_lim(type_max);
-	return file;
+
+	static int cnt = 0;
+	mem_type_t type = type_max;
+
+	if (anon_slice < 0) {
+		if ((!(cnt%FILE_RATIO)) && cnt) {
+			PR_DEBUG("Anon\n");
+			type = anon;
+		} else {
+			type = file;
+		}
+	} else if (anon_slice) {
+		type = rand_lim(type_max);
+	} else {
+		type = file;
+	}
+	cnt++;
+
+	return type;
 }
 
 static lt_t randomize_alloc_len()
@@ -833,23 +856,26 @@ static lt_t randomize_alloc_len()
 				break;
 		}
 	}
-	// printf("ANON LEN: %ld\n", file_lst[i].size);
+
 	return file_lst[i].size;
 }
 
 static lt_t randomize_alloc_count(int precision)
 {
 	lt_t i = 0;
+
 	if(precision)
-		i = max_alloc_per_phase; //rand_intr(max_alloc_per_phase/2, max_alloc_per_phase);
+		i = max_alloc_per_phase;
 	else
 		i = rand_intr(5, MAX_TRANSITION_CNT >> 3);
 
 	return i;
 }
+
 /*
  * This is the primary holding state of a phase.
- * Within the holding phase, the system generates pattern.
+ * Within the holding phase, 
+ * 	the system generates the pattern.
  */
 static void touch(lt_t i)
 {
@@ -858,13 +884,9 @@ static void touch(lt_t i)
 
 	if(curr >=  0) {
 		if(i >= 0 && i < alloc_track[curr].list_count) {
-			//printf("random touch\n");
 			addr = alloc_track[curr].lst[i].addr;
 			len = alloc_track[curr].lst[i].len;
-			/* TODO: Here is the point where the pattern is defined or 
-			 * pattern changes.
-			 */
-			//printf("addr: %p len: %ld\n", addr, len);
+			PR_DEBUG("Touching %p of len %ld Access type %s\n", addr, len, "Rand");
 			pattern[access_type](addr, len);
 		}
 	}
@@ -883,6 +905,7 @@ static int loop_once(double end)
 
 	for (i = 0; i < NUMS; i++)
 		j += num[i]++;
+
 	return j;
 }
 
@@ -890,10 +913,9 @@ static void loop_n(int n)
 {
 	while(n) {
 		lt_t cnt = alloc_track[curr].list_count;
+
 		/* touch only last element*/
-		//printf("Index touch is: %ld\n", cnt-1);
 		touch(cnt-1);
-		//loop_once();
 		n--;
 	}
 }
@@ -911,21 +933,16 @@ char* mmapper(char *path, lt_t size, mem_type_t type)
 {
 	int fd;
 	char *map = NULL;
-	//lt_t page_cnt = BYTE_TO_PAGE(size);
-	//off_t pa_offset = 0 & ~(sysconf(_SC_PAGE_SIZE) - 1);
+
 	if(anon == type) {
-		//printf("ANON SIZE: %ld \n", size);
 		map = (char *)mmap(NULL, size,
 			PROT_READ | PROT_WRITE, 
 			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-		//anon_cnt += page_cnt;
 	} else if (file == type) {
-		//printf("FILE SIZE: %ld \n", size);
 		if(!path) {
 			fprintf(stderr, "path is null\n");
 			exit(1);
 		}
-		//printf("PATH: %s\n", path);
 		fd = open(path, O_RDWR);
 		if(-1 == fd) {
 			fprintf(stderr, "path: %s: ", path);
@@ -939,7 +956,6 @@ char* mmapper(char *path, lt_t size, mem_type_t type)
 		map = (char *)mmap(NULL, size,
 			 PROT_READ | PROT_WRITE,
 			 MAP_PRIVATE, fd, 0);
-		//file_cnt += page_cnt;
 	}
 	if(MAP_FAILED == map) {
 		printf("%s, %ld, type: %d\n",path, size, type);
@@ -977,9 +993,9 @@ char* alloc(mem_type_t type, lt_t *len, file_path **node)
 	return mmapper(( (*node) ? (*node)->path : NULL),*len, type); 
 }
 
-static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
+static mem_type_t random_allocator_one (int anon_slice, lt_t *cnt)
 {
-	int alloc_type = randomize_alloc_type(anon_slice);
+	mem_type_t alloc_type = randomize_alloc_type(anon_slice);
 	lt_t alloc_len = randomize_alloc_len();
 	char *addr;
 	file_path *node = NULL;
@@ -987,15 +1003,15 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 	lt_t page_cnt = 0;
 
 	addr = alloc(alloc_type, &alloc_len, &node);
-	//printf("ADDR1: %p\n", addr);
 	if(!addr)
 		return type_max;
-	//lt_sleep(1);
+
 	alloc_suc = add_new_alloc(addr, alloc_len, alloc_type);
 
 	/* Page count computation */
 	page_cnt = BYTE_TO_PAGE(alloc_len);	
 	total_alloc_pages += page_cnt;
+
 	if(file == alloc_type)
 		file_cnt += page_cnt;
 	else if(anon == alloc_type)
@@ -1019,7 +1035,7 @@ static mem_type_t random_allocator_one( int anon_slice, lt_t *cnt)
 		//printf("cnt : %ld\n", *cnt);
 		*cnt = *cnt - 1;
 	}
-	//curr_alloc += (alloc_len / PAGE_SIZE);
+
 	return alloc_type;
 }
 
@@ -1031,32 +1047,34 @@ static int trans_rand_alloc()
 	#define MAX_LOOP 3
 	lt_t cnt = 0;
 	int i = rand_lim(MAX_LOOP);
-	int anon_slice;
+	int anon_slice = -1;
 	int ret = 0;
 	
 	go_to_nxt_phase();
 
-	if(alloc_precision)
+	if(alloc_precision){
 		cnt = randomize_alloc_count(1);
-	else
+		PR_DEBUG("Alloc Precision is set\n");
+	}
+	else {
 		cnt = randomize_alloc_count(0);
+		anon_slice = cnt/FILE_RATIO;
+	}
 
-	anon_slice = cnt/4;
-	//printf("anon slice %d\n", anon_slice);
-	in_transition = 1; /* FIXME: This is bad, needs a better approach to handle tranition restirtion*/
-	while(cnt /*&& (curr_alloc < max_limit)*/) {
+	/* FIXME: This is bad, 
+	 * needs a better approach to handle tranition restriction*/
+	in_transition = 1;
+	while(cnt) {
 		mem_type_t typ;
 		typ = random_allocator_one(anon_slice, &cnt);
 		if(typ >= type_max) { /*error check, sometimes path will get exhausted */
 			cnt--;
-			ret++;
 			continue;
 		}
 		loop_n(i); /* Small loop that touches only the last to give reality*/
 		if(typ > file) {
 			anon_slice--;
 		}
-		//cnt--;
 	}
 	in_transition = 0;
 
@@ -1074,13 +1092,11 @@ static int loop_for(double exec_time, time_granularity t)
 	double now = cputime(t);
 	double run = 0;
 	lt_t i = alloc_track[curr].list_count;
-	
-	//printf("list count: %ld\n", i);
+
 	while ( exec_time > (start + run) ) {
-		//printf("loop_for %f\n",start + run);
 		loop_start = now;
 
-		/* touch the index i @ curr phase */
+		/* touch the index i@curr phase */
 		if(i > 0) {
 			touch(i-1);
 			i--;
@@ -1088,41 +1104,43 @@ static int loop_for(double exec_time, time_granularity t)
 		else {
 			i = alloc_track[curr].list_count;
 		}
-		tmp += loop_once(exec_time - run);
 
+		tmp += loop_once(exec_time - run);
 		now = cputime(t);
 		last_loop = now - loop_start;
 		run += last_loop;
-		/*if (emergency_exit && wctime() > emergency_exit) {
-			fprintf(stderr, "oops!!!: memspin/%d emergency exit!\n", getpid());
-			fprintf(stderr, "Something is seriously wrong! Do not ignore this.\n");
-			break;
-		} */
 	}
 	return tmp;
 }
+
 /* Each job is a phase: transition and holding */
 static int job(double exec_time, time_granularity t)
 {
 	double chunk1, chunk2;
+	int ret = 0;
 	lt_t i;
 	double program_end = wctime(t) + exec_time;
 
-	if (wctime(t) > program_end)
-		return 0;
+	if (wctime(t) > program_end) {
+		fprintf(stderr, "Warning: Skipping a job, because wctime(%f) > programEnd(%f)\n", 
+				wctime(t), program_end);
+		ret = 1;
+	}
 	else {
 		/* TRANSITION: Randomize and touch allocations */
 		if(!alloc_nomore) {
-			if(trans_rand_alloc())
+			if(trans_rand_alloc()) {
+				fprintf(stderr, "Transition Random Failed\n");
 				goto FAIL;
+			}
 		}
 		i = alloc_track[curr].list_count;
 		loop_for(exec_time, t);
 		phase_cnt++;
-		return 1;
+		ret = 1;
 	}
 FAIL:
-	return 0;
+	return ret;
 }
 
 __attribute__((destructor)) void on_process_exit()
@@ -1130,6 +1148,19 @@ __attribute__((destructor)) void on_process_exit()
 	printf("Calling After exit call\n");
 	getrusage(RUSAGE_SELF, &res);
 	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
+}
+
+#define FILE_MAX 500000
+
+static void set_file_cnt(rlim_t file_max)
+{
+	struct rlimit rlim;
+
+	rlim.rlim_cur = file_max;
+	rlim.rlim_max = file_max;
+	if(!setrlimit(RLIMIT_NOFILE, &rlim)) {
+		perror("setting rlimit");
+	}
 }
 
 #define OPT "Ivp:l:e:M:s:t:A:V:h"
@@ -1237,10 +1268,10 @@ int main(int argc, char** argv)
 	/* Harcoded value */
 	period_ms = 50 * wcet_ms;
 	duration = wcet_ms;
-
 	start = wctime(time_g);
 
 	alloc_track_init();
+	set_file_cnt(FILE_MAX);
 
 	printf("\nFORMAT:\n");
 	printf("Metric: Pages of size 4k\n");
@@ -1260,10 +1291,10 @@ int main(int argc, char** argv)
 		getrusage(RUSAGE_SELF, &res1);
 		if (verbose) {
 
-			printf("%d, %d, %.4fms, %ld, %ld, %ld, %ld, %ld, %ld, %ld\n", 
+			printf("%d, %d, %.4f%s, %ld, %ld, %ld, %ld, %ld, %ld, %ld\n", 
 				getpid(),
 				cur_job,
-				(wctime(time_g) - start),
+				(wctime(time_g) - start), TIME_TO_STRING(time_g),
 				file_cnt, anon_cnt,
 				file_cnt + anon_cnt,
 				res1.ru_minflt, res1.ru_majflt,
@@ -1277,10 +1308,11 @@ int main(int argc, char** argv)
 		}
 
 		cur_job++;
-		if( (max_phase <= cur_job) /*|| (alloc_nomore)*/ )
+		if( (max_phase <= cur_job) || (alloc_nomore) ) {
+			printf("We break here\n");
 			break;
+		}
 
-		/* convert to seconds and scale */
 	} while (job(wcet_ms, time_g));
 
 	return 0;
