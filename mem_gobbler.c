@@ -43,9 +43,6 @@ typedef unsigned long lt_t;
 #define MAX_LIMIT 100000000
 #define PAGE_SIZE 4096
 
-/*
- * Concatenator 
- */
 /*Enable this for ubuntu or other machines for verbose*/
 #ifdef DEBUG
 #undef DEBUG
@@ -70,11 +67,18 @@ typedef unsigned long lt_t;
 
 #define PR_ERROR(fmt, ...)					\
        do {							\
-		printf(fmt, ##__VA_ARGS__);			\
+		fprintf(stderr, fmt, ##__VA_ARGS__);		\
 	        exit(-1);					\
 	} while(0)
 
+#define PR_WARN(fmt, ...)					\
+       do {							\
+		fprintf(stderr, fmt, ##__VA_ARGS__);		\
+	} while(0)
 
+/*
+ * Concatenator 
+ */
 #define PATH(name) FS # name
 
 /* This defines maximum allocation in metric of pages in a transition
@@ -118,6 +122,8 @@ typedef enum mem_type {
 	type_max
 }mem_type_t;
 
+#define mem_type_string(x)	( ((x) == file)? "File" : "Anon")
+
 typedef struct alloc_list_per_se {
 	char *addr;	/* starting address */
 	lt_t len;	/* length of the mmap*/
@@ -134,7 +140,9 @@ typedef struct alloc_list {
 /* List of phases */
 signed long curr = -1; /*current phase index*/
 static alloc_list_t *alloc_track;
-
+/*
+ * Mallocing because data segment is exceeding 2G error.
+ */
 #define ALLOC_INIT() do {							\
 		alloc_track = malloc(sizeof(*alloc_track) * MAX_ALLOC);		\
 		if(!alloc_track) {						\
@@ -158,9 +166,18 @@ typedef enum {
 	MEM_RAND, /* Imitates extreme pattern of random memory access */
 	MEM_MAX
 }mem_pattern_types;
+
+#define STRING_LEN 64
+const char ACCESS_PATTERN_STRING[MEM_MAX][STRING_LEN] = {
+								"Fix",
+								"Stride",
+								"Sequential",
+								"Repeat",
+								"Random"
+							};
 /*
  * TUNING THE LIMITS:
- *	More precise the parameters becomes system 
+ *	More precise the parameters; system 
  *	becomes more Deterministic.
  */
 
@@ -514,7 +531,7 @@ static void pattern_stride(char *addr1, lt_t len)
 	lt_t i = 0;
 	///XXX: handle user defined stride pattern.
 	if(!stride) {
-		fprintf(stderr, "stride returns 0\n");			
+		PR_WARN("stride returns 0\n");			
 	}
 
 	while(i < len) {
@@ -630,6 +647,7 @@ static void random_touch(char *addr, lt_t begin, lt_t end, lt_t len)
 
 	while(i < pages) {
 		//FIXME: There is a bug here.
+		//Corner Cases are not handled properly.
 		lt_t loop 	 = (pages > 1) ? page_size * i : 0;
 		lt_t start_index = begin + loop;
 		lt_t end_index 	 = (pages > 1) ? (page_size + start_index) : (end-500);
@@ -701,7 +719,7 @@ static file_path *find_avail_node(int i)
 	}
 
 	if(!node->path) {
-		fprintf(stderr, "node->path is NULL\n");
+		PR_WARN("node->path is NULL\n");
 		return NULL;
 	}
 	return node;
@@ -714,11 +732,10 @@ static file_path* get_file_path(lt_t *len)
 
 	/* Normal first best fit for the length*/
 	for(i = 0; i<max; i++) {
-		//printf("Asked length is : %ld : %ld\n", len, file_lst[i].size);
 		if(file_lst[i].size >= *len) {
 			node = find_avail_node(i);
 			if(!node) {
-				printf("Warning: Size: %ld is filled\n", file_lst[i].size);
+				PR_WARN("Warning: Size: %ld is filled\n", file_lst[i].size);
 				file_lst[i].filled = 1;	
 				continue;
 			}
@@ -742,8 +759,7 @@ static file_path* get_file_path(lt_t *len)
 static void go_to_nxt_phase()
 {
 	if(curr >= MAX_ALLOC) {
-		fprintf(stderr, "reached maximum phase transitions\n");
-		exit(1);
+		PR_ERROR("reached maximum phase transitions\n");
 		return;
 	}
 	curr++;
@@ -761,15 +777,15 @@ static int add_new_alloc(char *address, long len, mem_type_t type)
 {
 	lt_t i = alloc_track[curr].list_count;
 
-	if(i >= MAX_ALLOC) {
-		fprintf(stderr, "Curr: %ld MAX alloc : %ld\n", curr, i);
+	if(i >= MAX_ALLOC_PER_SE) {
+		PR_WARN("Curr: %ld MAX alloc : %ld\n", curr, i);
 		return -1;
 	}
 	alloc_track[curr].lst[i].addr = address;
 	alloc_track[curr].lst[i].len = len;
 	alloc_track[curr].lst[i].type = type;
 	alloc_track[curr].list_count++;
-	PR_DEBUG("New Alloc at addr:%p Len:%ld Type:%d\n", address, len, type);
+	PR_DEBUG("New Alloc at addr:%p Len:%ld Type:%s\n", address, len, mem_type_string(type));
 	return 1;
 }
 
@@ -823,7 +839,6 @@ static mem_type_t randomize_alloc_type(int anon_slice)
 
 	if (anon_slice < 0) {
 		if ((!(cnt%FILE_RATIO)) && cnt) {
-			PR_DEBUG("Anon\n");
 			type = anon;
 		} else {
 			type = file;
@@ -886,7 +901,8 @@ static void touch(lt_t i)
 		if(i >= 0 && i < alloc_track[curr].list_count) {
 			addr = alloc_track[curr].lst[i].addr;
 			len = alloc_track[curr].lst[i].len;
-			PR_DEBUG("Touching %p of len %ld Access type %s\n", addr, len, "Rand");
+			PR_DEBUG("Touching %p of len %ld Access type %s\n", 
+					addr, len, ACCESS_PATTERN_STRING[access_type]);
 			pattern[access_type](addr, len);
 		}
 	}
@@ -940,17 +956,15 @@ char* mmapper(char *path, lt_t size, mem_type_t type)
 			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	} else if (file == type) {
 		if(!path) {
-			fprintf(stderr, "path is null\n");
-			exit(1);
+			PR_ERROR("path is null\n");
 		}
 		fd = open(path, O_RDWR);
 		if(-1 == fd) {
-			fprintf(stderr, "path: %s: ", path);
 			perror("open is the error");
-			exit(1);
+			PR_ERROR("Failed path: %s: ", path);
 		}
 		if(ftruncate(fd, size)) {
-			fprintf(stderr, "truncate is the error\n");
+			PR_WARN("truncate is the error\n");
 		}
 
 		map = (char *)mmap(NULL, size,
@@ -976,14 +990,14 @@ char* alloc(mem_type_t type, lt_t *len, file_path **node)
 	if(anon == type) {
 		*node = NULL;
 		if(!(*len)) {
-			fprintf(stderr, "Error in length comp:%ld\n", file_lst[0].size);
+			PR_WARN("Error in length comp:%ld\n", file_lst[0].size);
 			*len = file_lst[0].size;				
 		}
 	}
 	else {
 		*node = get_file_path(len);
 		if(!*node) {
-			fprintf(stderr,"path is NULL");
+			PR_WARN("path is NULL");
 			return NULL;
 		}
 	}
@@ -1021,8 +1035,7 @@ static mem_type_t random_allocator_one (int anon_slice, lt_t *cnt)
 		node->alloc = alloc_suc;
 	}
 	else if(alloc_suc < 0) {
-		fprintf(stderr,"Failed to add new tracker");
-		exit(1);
+		PR_ERROR("Failed to add new tracker");
 	}
 
 	if(alloc_precision) { 
@@ -1032,7 +1045,6 @@ static mem_type_t random_allocator_one (int anon_slice, lt_t *cnt)
 			*cnt -= (page_cnt);
 	}
 	else {
-		//printf("cnt : %ld\n", *cnt);
 		*cnt = *cnt - 1;
 	}
 
@@ -1122,7 +1134,7 @@ static int job(double exec_time, time_granularity t)
 	double program_end = wctime(t) + exec_time;
 
 	if (wctime(t) > program_end) {
-		fprintf(stderr, "Warning: Skipping a job, because wctime(%f) > programEnd(%f)\n", 
+		PR_WARN("Warning: Skipping a job, because wctime(%f) > programEnd(%f)\n", 
 				wctime(t), program_end);
 		ret = 1;
 	}
@@ -1130,7 +1142,7 @@ static int job(double exec_time, time_granularity t)
 		/* TRANSITION: Randomize and touch allocations */
 		if(!alloc_nomore) {
 			if(trans_rand_alloc()) {
-				fprintf(stderr, "Transition Random Failed\n");
+				PR_WARN("Transition Random Failed\n");
 				goto FAIL;
 			}
 		}
@@ -1145,9 +1157,9 @@ FAIL:
 
 __attribute__((destructor)) void on_process_exit()
 {
-	printf("Calling After exit call\n");
+	PR_WARN("Calling After exit call\n");
 	getrusage(RUSAGE_SELF, &res);
-	printf("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
+	PR_WARN("%d, %ld, %ld, %ld, %ld\n", getpid(), file_cnt, anon_cnt, res.ru_minflt, res.ru_majflt);	
 }
 
 #define FILE_MAX 500000
@@ -1229,20 +1241,18 @@ int main(int argc, char** argv)
 			case 't':
 				access_type = atol(optarg);
 				if(access_type >= MEM_MAX) {
-					fprintf(stderr, "Wrong access type\n");
-					exit(1);
+					PR_ERROR("Wrong access type\n");
 				}
 			break;
 			case 'A': /* Total alloc in all phase put together*/
 				alloc_size = atol(optarg);
 				alloc_precision = true;	
-				printf("Warning: Allocate request is now precise: %ld\n", alloc_size);
+				PR_WARN("Warning: Allocate request is now precise: %ld\n", alloc_size);
 			break;
 			case 'V': /* Vector of localities */
 				vector = 1;
 				if(locality_vector_init(optarg)) {
-					printf("Please provide valid file\n");
-					exit(-1);
+					PR_ERROR("Please provide valid file\n");
 				}
 			break;
 			case 'I': /* Vector is IPFVT */
@@ -1304,12 +1314,12 @@ int main(int argc, char** argv)
 
 		if(max_limit < (file_cnt + anon_cnt)) {
 			alloc_nomore = 1;
-			printf("reached more than the max_limit(%ld): %ld", max_limit, total_alloc_pages);
+			PR_WARN("reached more than the max_limit(%ld): %ld", max_limit, total_alloc_pages);
 		}
 
 		cur_job++;
 		if( (max_phase <= cur_job) || (alloc_nomore) ) {
-			printf("We break here\n");
+			PR_WARN("We break here\n");
 			break;
 		}
 
