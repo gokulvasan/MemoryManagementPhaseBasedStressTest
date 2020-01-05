@@ -34,6 +34,7 @@
  */
 
 typedef unsigned long lt_t;
+typedef unsigned long long u64;
 
 #define NUMS 4096
 #define MAX_ALLOC (700000)
@@ -48,6 +49,22 @@ typedef unsigned long lt_t;
 #undef DEBUG
 #endif
 
+/* Used in case where the kernel is customized to alter STMA and LTMA */
+#if 1
+
+#ifndef CUSTOM_LINUX_KERNEL
+#define CUSTOM_LINUX_KERNEL
+#endif
+
+#else
+
+#ifdef CUSTOM_LINUX_KERNEL
+#undef CUSTOM_LINUX_KERNEL
+#endif
+
+#endif
+
+
 #ifdef DEBUG
 #define FS "/media/test_images/"
 #else
@@ -57,7 +74,7 @@ typedef unsigned long lt_t;
 #ifdef DEBUG
 #define PR_DEBUG(fmt, ...)					\
        do {							\
-		printf(fmt, ##__VA_ARGS__);			\
+		fprintf(stdout,fmt, ##__VA_ARGS__);		\
 	} while(0)
 #else
 
@@ -67,13 +84,13 @@ typedef unsigned long lt_t;
 
 #define PR_ERROR(fmt, ...)					\
        do {							\
-		fprintf(stderr, fmt, ##__VA_ARGS__);		\
+		fprintf(stderr,"Error:"fmt, ##__VA_ARGS__);	\
 	        exit(-1);					\
 	} while(0)
 
 #define PR_WARN(fmt, ...)					\
        do {							\
-		fprintf(stderr, fmt, ##__VA_ARGS__);		\
+		fprintf(stderr, "Warning:"fmt, ##__VA_ARGS__);	\
 	} while(0)
 
 /*
@@ -197,6 +214,88 @@ static lt_t max_alloc_per_phase_byte = 0; 	/* Represent the max allocation/phase
 static lt_t vector = 0;				/* Vector of files*/
 static lt_t ipfvt  = 0;				/* if(ipfvt){ then the file is series of IPFVT }*/
 static lt_t time_g = 0;				/* Decision on Time Granularity */
+
+#ifdef CUSTOM_LINUX_KERNEL
+static u64 stma = 0;				/* STMA reset length		*/
+static u64 ltma = 0;				/* LTMA reset length		*/
+
+static void _reset_stma_ltma(u64 stma, u64 ltma)
+{
+	
+#define PROC "/proc/"
+#define PD_LEN "/pd_len"
+#define PATH_LEN 256
+	
+	FILE *fd;
+	pid_t pid = getpid();
+	char path[PATH_LEN] = {'\0'};
+	unsigned long long data[2] = {0x00};
+	
+	data[0] = stma;
+	data[1] = ltma;
+	sprintf(path, "%s%d%s", PROC, pid, PD_LEN);
+
+	fd = fopen(path, "rw");
+	if(!fd) {
+		PR_ERROR("Something is Wrong in opening the file\n");
+	}
+
+	fread(data, sizeof(data), 1, fd);	
+	fclose(fd);
+
+	PR_DEBUG("The old Value is: STMA: %llu LTMA: %llu\n", data[0], data[1]);
+	PR_DEBUG("Setting the Val to: STMA %llu LTMA %llu\n", val[0], val[1]);
+
+	fd = fopen(path, "wb");
+	if(!fd) {
+		PR_ERROR("Something is Wrong in opening the file\n");
+	}
+	if(!fwrite(data, sizeof(data), 1, fd)) {
+		perror("Write is not working :(");
+		exit(-1);
+	}
+	fclose(fd);
+
+	fd = fopen(path, "rb");
+	memset(data, 0x00, sizeof(data));
+	fread(data, sizeof(data), 1, fd);
+	
+	if((data[0] - stma) || (data[1] - ltma)) {	
+		PR_ERROR("Value not set right STMA:%llu(E%llu) LTMA:%llu(E%llu)\n",
+			data[0], stma, data[1], ltma);
+	}
+	fclose(fd);
+}
+static void reset_stma_ltma(u64 stma, u64 ltma)
+{
+	u64 stma_f = stma;
+	u64 ltma_f = ltma;
+	
+	if(!stma_f && ltma_f) {
+		stma_f = ltma_f/2;
+	}
+	else if(stma_f && !ltma_f) {
+		ltma_f = stma_f * 2;
+	}
+	else if(!stma_f && !ltma_f) {
+		PR_ERROR("Expect Non Zero Values\n");
+	}
+	
+	if(stma_f && ltma_f) {
+		_reset_stma_ltma(stma_f, ltma_f);
+	}
+	else {
+		PR_ERROR("Something wrong\n");
+	}
+}
+
+#else
+
+static void reset_stma_ltma(u64 stma, u64 ltma)
+{
+	;	
+}
+#endif
 
 static void reset_max_alloc_per_phase(lt_t alloc_cnt) 
 {
@@ -389,17 +488,23 @@ static lt_t rand_intr(lt_t begin, lt_t end) {
 }
 static void touch_simple(char *addr)
 {
-	//struct timespec vartime = timer_start();
-	//lt_t lapsed;		
+#ifdef DEBUG
+	struct timespec vartime = timer_start();
+	lt_t lapsed;
+#endif	
 	/* Notice the function reads and then writes*/
 	if(*addr != 0xf) {
+		PR_DEBUG("\t\t\t %s: Touches %p\n", __func__, addr);
 		*addr = 0xf;
 	}
 	else {
+		PR_DEBUG("\t\t\t %s: Touches %p\n", __func__, addr);
 		*addr = 0x00;
 	}
-	//lapsed = timer_end(vartime);
-	//printf(" access time: %ld\n", lapsed);
+#ifdef DEBUG
+	lapsed = timer_end(vartime);
+	PR_DEBUG("\t\t\t access time: %ld\n", lapsed);
+#endif
 }
 
 /* ====================================randomizer: End======================================= */
@@ -547,7 +652,7 @@ static void pattern_seq(char *addr1, lt_t len)
 	lt_t i = 0;
 
 	while(i < len) {
-		PR_DEBUG("\t\t %s\n", __func__);
+		PR_DEBUG("\t\t %s: Touches: %p\n", __func__, &addr[i]);
 		touch_simple(&addr[i]);
 		i++;
 	}
@@ -650,14 +755,14 @@ static void random_touch(char *addr, lt_t begin, lt_t end, lt_t len)
 		//Corner Cases are not handled properly.
 		lt_t loop 	 = (pages > 1) ? page_size * i : 0;
 		lt_t start_index = begin + loop;
-		lt_t end_index 	 = (pages > 1) ? (page_size + start_index) : (end-500);
-
-		PR_DEBUG("%s: Start: %ld end: %ld\n", __func__, start_index, end_index);
+		lt_t end_index 	 = (pages > 1) ? (page_size + start_index) : (end-1000);
+		lt_t touch_len   = end_index - start_index; 
+		PR_DEBUG("%s: Start: %lx end: %lx\n", __func__, start_index, end_index);
 		if(end_index >= end) {
 			PR_DEBUG("random_touch is breaking\n");
 			break;
 		}
-		random_touch_page(&addr[start_index], end_index);
+		random_touch_page(&addr[start_index], touch_len);
 		i++;
 	}
 }
@@ -1175,7 +1280,7 @@ static void set_file_cnt(rlim_t file_max)
 	}
 }
 
-#define OPT "Ivp:l:e:M:s:t:A:V:h"
+#define OPT "Ivp:l:e:M:s:t:A:V:hS:L:"
 
 static void usage()
 {
@@ -1197,8 +1302,12 @@ static void usage()
 	printf("\t\t\t2: Sequential memory access pattern\n");
 	printf("\t\t\t3: Repeat memory access pattern\n");
 	printf("\t\t\t4: Random memory access pattern\n");
-	printf("\t-V <File name>       : Vector of localities\n");
-	printf("\t-I   		       : Vector is IPFVT\n");
+	printf("\t-V <File name>	: Vector of localities\n");
+	printf("\t-I		: Vector is IPFVT\n");
+	printf("\t if CUSTOM_LINUX_KERNEL defined, then\n");
+	printf("\t\t -S <STMA Count>	: STMA Value\n");
+	printf("\t\t -L <LTMA Count>	: LTMA Value\n");
+	printf("\t endif\n");
 }
 
 int main(int argc, char** argv)
@@ -1259,12 +1368,25 @@ int main(int argc, char** argv)
 				ipfvt = 1;
 				time_g = T_nanoSECS; 
 			break;
+			case 'S':
+#ifdef CUSTOM_LINUX_KERNEL
+				stma = atoll(optarg);		
+#else
+				PR_ERROR("Not a valid configuration\n");
+#endif
+			break;
+			case 'L':
+#ifdef CUSTOM_LINUX_KERNEL
+				ltma = atoll(optarg);
+#else
+				PR_ERROR("Not a valid configuration\n");
+#endif
+			break;
 			case 'h':
 			default:
 				usage();
 				exit(1);
 			break;
-
 			}
 		}
 	}
