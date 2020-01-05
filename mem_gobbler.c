@@ -221,16 +221,16 @@ static u64 ltma = 0;				/* LTMA reset length		*/
 
 static void _reset_stma_ltma(u64 stma, u64 ltma)
 {
-	
+
 #define PROC "/proc/"
 #define PD_LEN "/pd_len"
 #define PATH_LEN 256
-	
+
 	FILE *fd;
 	pid_t pid = getpid();
 	char path[PATH_LEN] = {'\0'};
 	unsigned long long data[2] = {0x00};
-	
+
 	data[0] = stma;
 	data[1] = ltma;
 	sprintf(path, "%s%d%s", PROC, pid, PD_LEN);
@@ -259,7 +259,7 @@ static void _reset_stma_ltma(u64 stma, u64 ltma)
 	fd = fopen(path, "rb");
 	memset(data, 0x00, sizeof(data));
 	fread(data, sizeof(data), 1, fd);
-	
+
 	if((data[0] - stma) || (data[1] - ltma)) {	
 		PR_ERROR("Value not set right STMA:%llu(E%llu) LTMA:%llu(E%llu)\n",
 			data[0], stma, data[1], ltma);
@@ -293,7 +293,7 @@ static void reset_stma_ltma(u64 stma, u64 ltma)
 
 static void reset_stma_ltma(u64 stma, u64 ltma)
 {
-	;	
+	return;	
 }
 #endif
 
@@ -1405,6 +1405,11 @@ int main(int argc, char** argv)
 	alloc_track_init();
 	set_file_cnt(FILE_MAX);
 
+#ifdef CUSTOM_LINUX_KERNEL	
+	if(stma || ltma) {
+		reset_stma_ltma(stma, ltma);
+	}
+#endif
 	printf("\nFORMAT:\n");
 	printf("Metric: Pages of size 4k\n");
 	printf("<PID>, <PHASE CNT>,  <DURATION>,  <FILEMAPCNT>, <ANONMAPCNT>, <TOTAL CNT>, <MINFAULT>, <MAJFAULT>, <TOTALFAULT>, <RSS(pages)>\n");
