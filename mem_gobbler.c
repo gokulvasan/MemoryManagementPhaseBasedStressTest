@@ -37,7 +37,7 @@ typedef unsigned long lt_t;
 typedef unsigned long long u64;
 
 #define NUMS 4096
-#define MAX_ALLOC (700000)
+#define MAX_ALLOC (50000)
 #define ms2ns(ms) ((ms)*1000000LL)
 
 /* MAX number of pages*/ 
