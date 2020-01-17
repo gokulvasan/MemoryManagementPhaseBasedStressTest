@@ -37,7 +37,7 @@ typedef unsigned long lt_t;
 typedef unsigned long long u64;
 
 #define NUMS 4096
-#define MAX_ALLOC (50000)
+#define MAX_ALLOC (60000)
 #define ms2ns(ms) ((ms)*1000000LL)
 
 /* MAX number of pages*/ 
@@ -231,8 +231,6 @@ static void _reset_stma_ltma(u64 stma, u64 ltma)
 	char path[PATH_LEN] = {'\0'};
 	unsigned long long data[2] = {0x00};
 
-	data[0] = stma;
-	data[1] = ltma;
 	sprintf(path, "%s%d%s", PROC, pid, PD_LEN);
 
 	fd = fopen(path, "rw");
@@ -246,6 +244,8 @@ static void _reset_stma_ltma(u64 stma, u64 ltma)
 	PR_DEBUG("The old Value is: STMA: %llu LTMA: %llu\n", data[0], data[1]);
 	PR_DEBUG("Setting the Val to: STMA %llu LTMA %llu\n", val[0], val[1]);
 
+	data[0] = stma;
+	data[1] = ltma;
 	fd = fopen(path, "wb");
 	if(!fd) {
 		PR_ERROR("Something is Wrong in opening the file\n");
